@@ -104,7 +104,11 @@ export default function PracticeSessionPage() {
               </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
+            <p className="text-lg text-gray-600 font-semibold">AI explanations are currently unavailable</p>
+          </div>
+        )}
       </div>
     </div>
   )

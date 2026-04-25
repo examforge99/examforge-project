@@ -21,17 +21,12 @@ export default function SubscribePage() {
           Unlock premium features and accelerate your exam preparation.
         </p>
 
-        {!flags.payments_enabled ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 text-center">
-            <p className="text-lg text-yellow-800">
-              Payments temporarily unavailable
-            </p>
-            <p className="text-sm text-yellow-700 mt-2">
-              We're currently performing maintenance on our payment system. Please try again shortly.
-            </p>
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-3 gap-8">
+<div className="grid md:grid-cols-3 gap-8">
+          {!flags.payments_enabled && (
+            <div className="md:col-span-3 bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4 text-center">
+              <p className="text-lg text-yellow-800 font-semibold">Payments are currently unavailable</p>
+            </div>
+          )}
             {/* Basic Plan */}
             <div className="border border-gray-200 rounded-lg p-8 hover:shadow-lg transition-shadow">
               <h2 className="text-2xl font-semibold mb-4">Basic</h2>
@@ -46,7 +41,7 @@ export default function SubscribePage() {
                   <span>Progress tracking</span>
                 </li>
               </ul>
-              <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">
+              <button className={`w-full py-2 rounded-lg transition-colors ${flags.payments_enabled ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} disabled={!flags.payments_enabled}>
                 Subscribe Now
               </button>
             </div>
@@ -72,7 +67,7 @@ export default function SubscribePage() {
                   <span>Personalized study plans</span>
                 </li>
               </ul>
-              <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+              <button className={`w-full py-2 rounded-lg transition-colors font-semibold ${flags.payments_enabled ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} disabled={!flags.payments_enabled}>
                 Subscribe Now
               </button>
             </div>
@@ -95,12 +90,11 @@ export default function SubscribePage() {
                   <span>Unlimited practice tests</span>
                 </li>
               </ul>
-              <button className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">
+              <button className={`w-full py-2 rounded-lg transition-colors ${flags.payments_enabled ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`} disabled={!flags.payments_enabled}>
                 Subscribe Now
               </button>
             </div>
           </div>
-        )}
       </div>
     </div>
   )
