@@ -1,56 +1,110 @@
 // app/api/ai/onboarding/route.ts
 // POST /api/ai/onboarding
-// Body: { user_id, weak_subjects, exam_date, daily_hours }
-// Called after student completes onboarding form
+// Body: { user_id, full_name, exam_type, department, target_score, weak_subjects }
+//
+// 1. Saves student profile to users table
+// 2. Pulls exam date automatically from exam_calendar table
+// 3. Fires Gemini welcome message personalized to their profile
+// 4. Saves AI interaction to ai_interactions table
 
-import { callGemini } from '@/lib/ai/gemini'
+import { callGemini }      from '@/lib/ai/gemini'
 import { saveInteraction } from '@/lib/ai/saveInteraction'
+import { supabaseAdmin }   from '@/lib/supabase'
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { user_id, weak_subjects, exam_date, daily_hours } = body
+    const {
+      user_id,
+      full_name,
+      exam_type,
+      department,
+      target_score,
+      weak_subjects,
+    } = body
 
-    if (!user_id || !weak_subjects || !exam_date || !daily_hours) {
+    if (!user_id || !full_name || !exam_type || !department) {
       return Response.json(
-        { error: 'user_id, weak_subjects, exam_date, and daily_hours are required' },
+        { error: 'user_id, full_name, exam_type, and department are required' },
         { status: 400 }
       )
     }
 
-    const today = new Date()
-    const examDateObj = new Date(exam_date)
-    const daysUntilExam = Math.ceil(
-      (examDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    )
+    // 1. Save student profile to users table
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        full_name,
+        exam_type,
+        department,
+        target_score:   target_score   ?? null,
+        weak_subjects:  Array.isArray(weak_subjects) ? weak_subjects : [],
+        onboarding_completed: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user_id)
 
-    const subjectList = Array.isArray(weak_subjects)
+    if (updateError) {
+      return Response.json({ error: updateError.message }, { status: 500 })
+    }
+
+    // 2. Pull exam date from exam_calendar table
+    const { data: examEvent } = await supabaseAdmin
+      .from('exam_calendar')
+      .select('exam_name, exam_date, description')
+      .ilike('exam_name', `%${exam_type}%`)
+      .gte('exam_date', new Date().toISOString())
+      .order('exam_date', { ascending: true })
+      .limit(1)
+      .single()
+
+    const daysUntilExam = examEvent?.exam_date
+      ? Math.ceil(
+          (new Date(examEvent.exam_date).getTime() - Date.now()) /
+          (1000 * 60 * 60 * 24)
+        )
+      : null
+
+    const subjectList = Array.isArray(weak_subjects) && weak_subjects.length > 0
       ? weak_subjects.join(', ')
-      : weak_subjects
+      : 'not specified yet'
 
-    const systemPrompt = `You are an experienced JAMB and WAEC exam coach on ExamForge, a Nigerian exam preparation platform.
-A brand new student just joined. This is their very first interaction.
-Be warm, encouraging, and specific. Make them feel they made the right decision joining ExamForge.
-English only.`
+    // 3. Generate personalized AI welcome message
+    const systemPrompt = `You are an experienced JAMB, WAEC and NECO exam coach on ExamForge, a Nigerian exam preparation platform.
+This is a student's very first interaction with ExamForge.
+Be warm, encouraging, and specific to their situation.
+Sound like a coach who has helped hundreds of Nigerian students pass their exams.
+English only. No markdown. No bullet points. Just natural flowing sentences.`
 
-    const userPrompt = `A new student just joined ExamForge and completed their setup.
-Their weak subjects: ${subjectList}
-Their exam date: ${exam_date} — ${daysUntilExam} days away
-Daily study hours available: ${daily_hours}
+    const userPrompt = `A new student just completed their ExamForge setup. Here is their profile:
 
-Generate:
-1. A personalized first week study plan — which subject first and why
-2. One specific advice based on their time available and exam proximity
-3. An encouraging closing statement that makes them feel ready to start
+Name: ${full_name}
+Exam: ${exam_type}
+Department: ${department}
+Target score: ${target_score ? target_score : 'not set'}
+Weak subjects: ${subjectList}
+${daysUntilExam ? `Days until ${exam_type}: ${daysUntilExam} days` : ''}
 
-Be warm, specific, and sound like a coach who has helped many JAMB students before.
-Keep it under 4 sentences. English only.`
+Write a personalized welcome message that:
+1. Greets them by first name warmly
+2. Acknowledges their exam (${exam_type}) and department (${department})
+3. If they have weak subjects, give one sharp specific tip for the first one
+4. If exam date is known, reference how much time they have and make it feel manageable
+5. End with one strong motivating line that makes them want to start practicing immediately
 
-    const recommendation = await callGemini(systemPrompt, userPrompt, 0.7, 250)
+Maximum 4 sentences. No bullet points. Sound human and Nigerian-aware.`
 
+    const recommendation = await callGemini(systemPrompt, userPrompt, 0.7, 300)
+
+    // 4. Save AI interaction
     await saveInteraction(user_id, 'onboarding', recommendation)
 
-    return Response.json({ recommendation })
+    return Response.json({
+      success: true,
+      recommendation,
+      exam_info: examEvent ?? null,
+      days_until_exam: daysUntilExam ?? null,
+    })
 
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 })
