@@ -1,7 +1,7 @@
 // app/api/ai/explanation/route.ts
-// UPDATED — handles diagram questions by passing image as base64 to Gemini
+// UPDATED — AI knows what the student answered and responds accordingly
 // POST /api/ai/explanation
-// Body: { question_id, user_id, subject, topic }
+// Body: { question_id, user_id, subject, topic, selected_answer_index, is_correct }
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { buildSystemPrompt, StudentContext } from '@/lib/ai/buildSystemPrompt'
@@ -17,7 +17,6 @@ async function callGeminiWithOptionalImage(
 
   const parts: any[] = [{ text: systemPrompt }]
 
-  // If question has a diagram — fetch it and convert to base64
   if (imageUrl) {
     try {
       const imageRes = await fetch(imageUrl)
@@ -39,11 +38,10 @@ async function callGeminiWithOptionalImage(
         })
 
         parts.push({
-          text: 'The image above is the diagram associated with this question. Use it to give a thorough explanation.'
+          text: 'The image above is the diagram associated with this question. Use it in your explanation.'
         })
       }
     } catch (err) {
-      // If image fetch fails, continue without it
       console.error('Failed to fetch diagram image:', err)
     }
   }
@@ -58,8 +56,8 @@ async function callGeminiWithOptionalImage(
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 1000
+          temperature: 0.4,
+          maxOutputTokens: 1200
         }
       })
     }
@@ -82,7 +80,14 @@ async function callGeminiWithOptionalImage(
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { question_id, user_id, subject, topic } = body
+    const {
+      question_id,
+      user_id,
+      subject,
+      topic,
+      selected_answer_index, // what the student chose (0-4)
+      is_correct,            // boolean — did they get it right
+    } = body
 
     if (!question_id || !user_id) {
       return Response.json(
@@ -91,23 +96,25 @@ export async function POST(request: Request) {
       )
     }
 
-    // Step 1: Check cache in answers table
+    // Step 1: Check cache
+    // Only serve cached explanations when student got it RIGHT
+    // Wrong answer explanations must always be personalized — never cached
     const { data: answerData } = await supabaseAdmin
       .from('answers')
       .select('explanation, verification_status')
       .eq('question_id', question_id)
       .single()
 
-    // Serve from cache if verified or ai_generated (not flagged)
     if (
+      is_correct &&
       answerData?.explanation &&
       (answerData.verification_status === 'human_verified' ||
         answerData.verification_status === 'ai_generated')
     ) {
-      // Save interaction so usage is tracked
       await saveInteraction(user_id, 'explanation', answerData.explanation, {
         question_id,
         from_cache: true,
+        is_correct,
       })
 
       return Response.json({
@@ -121,7 +128,7 @@ export async function POST(request: Request) {
       .from('questions')
       .select(
         'question_text, option_1, option_2, option_3, option_4, option_5, ' +
-        'correct_answer_index, subject, topic, has_diagram, ' +
+        'correct_answer_index, subject, topic, year, has_diagram, ' +
         'diagram_description, diagram_image_url'
       )
       .eq('id', question_id)
@@ -138,78 +145,126 @@ export async function POST(request: Request) {
     )
     const context: StudentContext = await contextRes.json()
 
-    // Step 4: Build system prompt with subject tone
+    // Step 4: Build system prompt
     const systemPrompt = buildSystemPrompt(
       context,
       subject || question.subject,
       'explanation'
     )
 
-    const options = [
-      `A) ${question.option_1}`,
-      `B) ${question.option_2}`,
-      `C) ${question.option_3}`,
-      `D) ${question.option_4}`,
-      question.option_5 ? `E) ${question.option_5}` : null
-    ]
-      .filter(Boolean)
+    // Build options
+    const optionsList = [
+      question.option_1,
+      question.option_2,
+      question.option_3,
+      question.option_4,
+      question.option_5 ?? null,
+    ].filter(Boolean)
+
+    const optionLetters = ['A', 'B', 'C', 'D', 'E']
+
+    const optionsFormatted = optionsList
+      .map((opt, i) => `${optionLetters[i]}) ${opt}`)
       .join('\n')
 
-    const correctLetter =
-      ['A', 'B', 'C', 'D', 'E'][question.correct_answer_index] || 'A'
+    const correctLetter = optionLetters[question.correct_answer_index] || 'A'
+    const correctOptionText = optionsList[question.correct_answer_index] || ''
+
+    const selectedLetter = selected_answer_index !== undefined && selected_answer_index !== null
+      ? optionLetters[selected_answer_index]
+      : null
+    const selectedOptionText = selected_answer_index !== undefined && selected_answer_index !== null
+      ? optionsList[selected_answer_index]
+      : null
 
     const diagramContext = question.has_diagram && question.diagram_description
       ? `\nDiagram context: ${question.diagram_description}`
       : ''
 
-    const userPrompt = `Explain this question to the student.
-${question.has_diagram ? '(This question has a diagram — it has been provided as an image above. Use it in your explanation.)' : ''}
+    // Step 5: Build personalized prompt — different for right vs wrong
+    let userPrompt: string
+
+    if (is_correct) {
+      userPrompt = `The student just answered this question CORRECTLY. Reinforce their understanding.
+${question.has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
 ${diagramContext}
 
 Question: ${question.question_text}
 Options:
-${options}
-Correct answer: ${correctLetter}
+${optionsFormatted}
 
-Your explanation must include:
-1. Why the correct answer is right — be specific
-2. Why each wrong option is wrong — one line each
-3. Which JAMB/WAEC syllabus concept this tests
-4. A real world example or analogy if it helps
-${question.has_diagram ? '5. What the diagram shows and how it relates to the answer' : ''}
+Student chose: ${selectedLetter}) ${selectedOptionText}
+Correct answer: ${correctLetter}) ${correctOptionText}
+Result: CORRECT ✓
 
-Adapt your explanation to this student's weak areas and history.
-Use the subject tone in your instructions.
-Be thorough but clear. English only.`
+Your response must:
+1. Briefly acknowledge they got it right — warm but not over the top
+2. Explain clearly WHY ${correctLetter} is correct — reinforce the reasoning so it sticks
+3. Name the exact syllabus concept or topic this question tests
+4. Briefly explain why the other options are wrong — one line each
+5. End with one related concept they should also master to deepen their knowledge
+${question.has_diagram ? '6. Reference what the diagram shows and how it supports the correct answer' : ''}
 
-    // Step 5: Call Gemini — pass image if question has diagram
+Tone: encouraging, coach-like, Nigerian-aware. Flowing sentences, no bullet points. English only.`
+
+    } else {
+      userPrompt = `The student just answered this question INCORRECTLY. Help them understand their mistake and guide them.
+${question.has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
+${diagramContext}
+
+Question: ${question.question_text}
+Options:
+${optionsFormatted}
+
+Student chose: ${selectedLetter ? `${selectedLetter}) ${selectedOptionText}` : 'No answer selected'}
+Correct answer: ${correctLetter}) ${correctOptionText}
+Result: WRONG ✗
+
+Your response must:
+1. Acknowledge what they chose without being harsh — be empathetic, this is a common mistake
+2. Explain specifically WHY option ${selectedLetter} is wrong — don't be vague
+3. Explain clearly WHY option ${correctLetter} is the correct answer
+4. Identify the exact concept or topic they are missing that caused this mistake
+5. Tell them specifically what to go and revise — be precise (e.g. "Revise Newton's Third Law, specifically action-reaction pairs in collision problems")
+6. Give one practical tip or memory trick to help them remember this next time
+${question.has_diagram ? '7. Explain what the diagram shows and how understanding it would have helped them get this right' : ''}
+
+Tone: honest but kind, like a coach who has seen this mistake before and knows exactly how to fix it. Nigerian-aware. Flowing sentences, no bullet points. English only.`
+    }
+
+    // Step 6: Call Gemini
     const explanation = await callGeminiWithOptionalImage(
       systemPrompt,
       userPrompt,
       question.has_diagram ? question.diagram_image_url : null
     )
 
-    // Step 6: Save to answers table
-    if (answerData) {
-      await supabaseAdmin
-        .from('answers')
-        .update({ explanation, verification_status: 'ai_generated' })
-        .eq('question_id', question_id)
-    } else {
-      await supabaseAdmin.from('answers').insert({
-        question_id,
-        correct_answer_index: question.correct_answer_index,
-        explanation,
-        verification_status: 'ai_generated',
-      })
+    // Step 7: Only cache correct answer explanations
+    // Wrong answer explanations are personalized — not cached
+    if (is_correct) {
+      if (answerData) {
+        await supabaseAdmin
+          .from('answers')
+          .update({ explanation, verification_status: 'ai_generated' })
+          .eq('question_id', question_id)
+      } else {
+        await supabaseAdmin.from('answers').insert({
+          question_id,
+          correct_answer_index: question.correct_answer_index,
+          explanation,
+          verification_status: 'ai_generated',
+        })
+      }
     }
 
-    // Step 7: Save interaction — this is the single source of usage tracking
+    // Step 8: Save interaction
     await saveInteraction(user_id, 'explanation', explanation, {
       subject: subject || question.subject,
       topic: topic || question.topic,
       question_id,
       from_cache: false,
+      is_correct,
+      selected_answer_index,
       had_diagram: question.has_diagram,
     })
 
@@ -218,4 +273,4 @@ Be thorough but clear. English only.`
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 })
   }
-}
+                          }
