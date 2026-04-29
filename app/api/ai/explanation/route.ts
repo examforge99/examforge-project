@@ -138,28 +138,28 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Question not found' }, { status: 404 })
     }
 
-// Step 3: Fetch student context
+    // Step 3: Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
     const contextRes = await fetch(
       `${baseUrl}/api/student/context?user_id=${user_id}`
     )
     const contextData = await contextRes.json()
     const context: StudentContext = contextData as StudentContext
-    
+
     // Step 4: Build system prompt
     const systemPrompt = buildSystemPrompt(
       context,
-      subject || question.subject,
+      subject || (question as any).subject,
       'explanation'
     )
 
     // Build options
     const optionsList = [
-      question.option_1,
-      question.option_2,
-      question.option_3,
-      question.option_4,
-      question.option_5 ?? null,
+      (question as any).option_1,
+      (question as any).option_2,
+      (question as any).option_3,
+      (question as any).option_4,
+      (question as any).option_5 ?? null,
     ].filter(Boolean)
 
     const optionLetters = ['A', 'B', 'C', 'D', 'E']
@@ -168,8 +168,8 @@ export async function POST(request: Request) {
       .map((opt, i) => `${optionLetters[i]}) ${opt}`)
       .join('\n')
 
-    const correctLetter = optionLetters[question.correct_answer_index] || 'A'
-    const correctOptionText = optionsList[question.correct_answer_index] || ''
+    const correctLetter = optionLetters[(question as any).correct_answer_index] || 'A'
+    const correctOptionText = optionsList[(question as any).correct_answer_index] || ''
 
     const selectedLetter = selected_answer_index !== undefined && selected_answer_index !== null
       ? optionLetters[selected_answer_index]
@@ -178,8 +178,8 @@ export async function POST(request: Request) {
       ? optionsList[selected_answer_index]
       : null
 
-    const diagramContext = question.has_diagram && question.diagram_description
-      ? `\nDiagram context: ${question.diagram_description}`
+    const diagramContext = (question as any).has_diagram && (question as any).diagram_description
+      ? `\nDiagram context: ${(question as any).diagram_description}`
       : ''
 
     // Step 5: Build personalized prompt — different for right vs wrong
@@ -187,10 +187,10 @@ export async function POST(request: Request) {
 
     if (is_correct) {
       userPrompt = `The student just answered this question CORRECTLY. Reinforce their understanding.
-${question.has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
+${(question as any).has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
 ${diagramContext}
 
-Question: ${question.question_text}
+Question: ${(question as any).question_text}
 Options:
 ${optionsFormatted}
 
@@ -204,16 +204,16 @@ Your response must:
 3. Name the exact syllabus concept or topic this question tests
 4. Briefly explain why the other options are wrong — one line each
 5. End with one related concept they should also master to deepen their knowledge
-${question.has_diagram ? '6. Reference what the diagram shows and how it supports the correct answer' : ''}
+${(question as any).has_diagram ? '6. Reference what the diagram shows and how it supports the correct answer' : ''}
 
 Tone: encouraging, coach-like, Nigerian-aware. Flowing sentences, no bullet points. English only.`
 
     } else {
       userPrompt = `The student just answered this question INCORRECTLY. Help them understand their mistake and guide them.
-${question.has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
+${(question as any).has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
 ${diagramContext}
 
-Question: ${question.question_text}
+Question: ${(question as any).question_text}
 Options:
 ${optionsFormatted}
 
@@ -228,7 +228,7 @@ Your response must:
 4. Identify the exact concept or topic they are missing that caused this mistake
 5. Tell them specifically what to go and revise — be precise (e.g. "Revise Newton's Third Law, specifically action-reaction pairs in collision problems")
 6. Give one practical tip or memory trick to help them remember this next time
-${question.has_diagram ? '7. Explain what the diagram shows and how understanding it would have helped them get this right' : ''}
+${(question as any).has_diagram ? '7. Explain what the diagram shows and how understanding it would have helped them get this right' : ''}
 
 Tone: honest but kind, like a coach who has seen this mistake before and knows exactly how to fix it. Nigerian-aware. Flowing sentences, no bullet points. English only.`
     }
@@ -237,7 +237,7 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
     const explanation = await callGeminiWithOptionalImage(
       systemPrompt,
       userPrompt,
-      question.has_diagram ? question.diagram_image_url : null
+      (question as any).has_diagram ? (question as any).diagram_image_url : null
     )
 
     // Step 7: Only cache correct answer explanations
@@ -251,7 +251,7 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
       } else {
         await supabaseAdmin.from('answers').insert({
           question_id,
-          correct_answer_index: question.correct_answer_index,
+          correct_answer_index: (question as any).correct_answer_index,
           explanation,
           verification_status: 'ai_generated',
         })
@@ -260,14 +260,14 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
 
     // Step 8: Save interaction using correct saveInteraction signature
     await saveInteraction(user_id, 'explanation', explanation, {
-      subject: subject || question.subject,
-      topic: topic || question.topic,
+      subject: subject || (question as any).subject,
+      topic: topic || (question as any).topic,
       metricsSnapshot: {
         question_id,
         from_cache: false,
         is_correct,
         selected_answer_index,
-        had_diagram: question.has_diagram,
+        had_diagram: (question as any).has_diagram,
       },
     })
 
@@ -276,4 +276,4 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 })
   }
-      }
+  }
