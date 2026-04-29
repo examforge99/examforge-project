@@ -20,11 +20,11 @@ export async function POST(request: Request) {
     // Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
     const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
-    const context: StudentContext = await contextRes.json()
+    const contextData = await contextRes.json()
+    const context: StudentContext = contextData as StudentContext
 
     const now = new Date()
     const currentHour = now.getHours()
-    const todayDate = now.toISOString().split('T')[0]
 
     let reminderType = ''
     let userPrompt = ''
@@ -51,7 +51,7 @@ Keep it under 2 sentences. English only.`
       context.weak_topics.length > 0
     ) {
       reminderType = 'exam_countdown'
-      const weakSubjects = [...new Set(context.weak_topics.map(t => t.subject))].join(', ')
+      const weakSubjects = Array.from(new Set(context.weak_topics.map((t: any) => t.subject))).join(', ')
       userPrompt = `Generate an exam countdown warning for this student.
 Exam is ${context.user.days_until_exam} days away.
 Subjects still below 60%: ${weakSubjects}
