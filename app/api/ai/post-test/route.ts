@@ -25,7 +25,8 @@ export async function POST(request: Request) {
     // Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
     const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
-    const context: StudentContext = await contextRes.json()
+    const contextData = await contextRes.json()
+    const context: StudentContext = contextData as StudentContext
 
     // Get historical accuracy for this subject
     const historicalAccuracy = context.accuracy_by_subject?.[subject] || 0
@@ -50,9 +51,9 @@ English only.`
     const narrative = await callGemini(systemPrompt, userPrompt, 0.7, 300)
 
     // Find the weakest topic in this subject for the next_topic recommendation
-    const subjectWeakTopics = context.weak_topics
-      .filter(t => t.subject === subject)
-      .sort((a, b) => a.accuracy - b.accuracy)
+    const subjectWeakTopics = (context.weak_topics || [])
+      .filter((t: any) => t.subject === subject)
+      .sort((a: any, b: any) => a.accuracy - b.accuracy)
 
     const nextTopic = subjectWeakTopics[0]?.topic || null
 
