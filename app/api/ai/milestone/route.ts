@@ -31,7 +31,8 @@ export async function POST(request: Request) {
     // Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
     const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
-    const context: StudentContext = await contextRes.json()
+    const contextData = await contextRes.json()
+    const context: StudentContext = contextData as StudentContext
 
     const milestoneLabel = MILESTONE_LABELS[milestone_type] || milestone_type
 
