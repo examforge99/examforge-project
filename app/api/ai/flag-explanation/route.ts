@@ -48,24 +48,25 @@ export async function POST(request: Request) {
     // Step 4: Get student context for personalized explanation
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
     const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
-    const context: StudentContext = await contextRes.json()
+    const contextData = await contextRes.json()
+    const context: StudentContext = contextData as StudentContext
 
-    const systemPrompt = buildSystemPrompt(context, question.subject, 'flagged_explanation')
+    const systemPrompt = buildSystemPrompt(context, (question as any).subject, 'flagged_explanation')
 
     const options = [
-      `A) ${question.option_1}`,
-      `B) ${question.option_2}`,
-      `C) ${question.option_3}`,
-      `D) ${question.option_4}`,
-      question.option_5 ? `E) ${question.option_5}` : null
+      `A) ${(question as any).option_1}`,
+      `B) ${(question as any).option_2}`,
+      `C) ${(question as any).option_3}`,
+      `D) ${(question as any).option_4}`,
+      (question as any).option_5 ? `E) ${(question as any).option_5}` : null
     ].filter(Boolean).join('\n')
 
-    const correctLetter = ['A', 'B', 'C', 'D', 'E'][question.correct_answer_index] || 'A'
+    const correctLetter = ['A', 'B', 'C', 'D', 'E'][(question as any).correct_answer_index] || 'A'
 
     const userPrompt = `The previous explanation for this question was flagged as incorrect by a student.
 Generate a fresh, accurate, and thorough explanation.
 
-Question: ${question.question_text}
+Question: ${(question as any).question_text}
 Options:
 ${options}
 Correct answer: ${correctLetter}
