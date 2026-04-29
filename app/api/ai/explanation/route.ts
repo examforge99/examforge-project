@@ -85,8 +85,8 @@ export async function POST(request: Request) {
       user_id,
       subject,
       topic,
-      selected_answer_index, // what the student chose (0-4)
-      is_correct,            // boolean — did they get it right
+      selected_answer_index,
+      is_correct,
     } = body
 
     if (!question_id || !user_id) {
@@ -112,9 +112,9 @@ export async function POST(request: Request) {
         answerData.verification_status === 'ai_generated')
     ) {
       await saveInteraction(user_id, 'explanation', answerData.explanation, {
-        question_id,
-        from_cache: true,
-        is_correct,
+        subject: subject || undefined,
+        topic: topic || undefined,
+        metricsSnapshot: { question_id, from_cache: true, is_correct },
       })
 
       return Response.json({
@@ -257,15 +257,17 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
       }
     }
 
-    // Step 8: Save interaction
+    // Step 8: Save interaction using correct saveInteraction signature
     await saveInteraction(user_id, 'explanation', explanation, {
       subject: subject || question.subject,
       topic: topic || question.topic,
-      question_id,
-      from_cache: false,
-      is_correct,
-      selected_answer_index,
-      had_diagram: question.has_diagram,
+      metricsSnapshot: {
+        question_id,
+        from_cache: false,
+        is_correct,
+        selected_answer_index,
+        had_diagram: question.has_diagram,
+      },
     })
 
     return Response.json({ explanation, from_cache: false })
@@ -273,4 +275,4 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 })
   }
-                          }
+      }
