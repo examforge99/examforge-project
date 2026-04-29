@@ -138,13 +138,14 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Question not found' }, { status: 404 })
     }
 
-    // Step 3: Fetch student context
+// Step 3: Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
     const contextRes = await fetch(
       `${baseUrl}/api/student/context?user_id=${user_id}`
     )
-    const context: StudentContext = await contextRes.json()
-
+    const contextData = await contextRes.json()
+    const context: StudentContext = contextData as StudentContext
+    
     // Step 4: Build system prompt
     const systemPrompt = buildSystemPrompt(
       context,
