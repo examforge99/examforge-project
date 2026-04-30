@@ -14,7 +14,7 @@ import { useAuth } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { useFlags } from '@/hooks/useFlags'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Types 
 
 interface Question {
   id: string
@@ -43,12 +43,12 @@ interface SessionConfig {
   session_id: string
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// Constants 
 
 const TOTAL_SECONDS = 2 * 60 * 60 // 2 hours
 const OPTIONS = ['A', 'B', 'C', 'D', 'E']
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+// Utility 
 
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -58,7 +58,7 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// Main Component 
 
 export default function PracticeSessionPage() {
   const { userId } = useAuth()
@@ -80,7 +80,7 @@ export default function PracticeSessionPage() {
   const startTimeRef                      = useRef<Record<string, number>>({}) // question_id → start timestamp
   const hasAutoSubmitted                  = useRef(false)
 
-  // ── Load session config and questions ─────────────────────────────────────
+  // Load session config and questions
 
   useEffect(() => {
     if (!userId) return
@@ -123,7 +123,7 @@ export default function PracticeSessionPage() {
     loadSession()
   }, [userId])
 
-  // ── Countdown timer ────────────────────────────────────────────────────────
+  // Countdown timer 
 
   useEffect(() => {
     if (loading || submitting) return
@@ -145,7 +145,7 @@ export default function PracticeSessionPage() {
     return () => clearInterval(interval)
   }, [loading, submitting])
 
-  // ── Track question start time ──────────────────────────────────────────────
+  // Track question start time 
 
   const currentQuestion = sessions[activeSubjectIdx]?.questions[questionIdx]
 
@@ -155,7 +155,7 @@ export default function PracticeSessionPage() {
     }
   }, [currentQuestion])
 
-  // ── Select an answer ───────────────────────────────────────────────────────
+  //  Select an answer 
 
   const selectAnswer = useCallback(async (questionId: string, optionIndex: number) => {
     setAnswers(prev => ({ ...prev, [questionId]: optionIndex }))
@@ -182,7 +182,7 @@ export default function PracticeSessionPage() {
     }
   }, [userId])
 
-  // ── Navigate questions ─────────────────────────────────────────────────────
+  // Navigate questions 
 
   function goNext() {
     const currentSession = sessions[activeSubjectIdx]
@@ -206,7 +206,7 @@ export default function PracticeSessionPage() {
     }
   }
 
-  // ── Submit session ─────────────────────────────────────────────────────────
+  // Submit session 
 
   async function handleSubmit(auto = false) {
     if (submitting) return
@@ -232,7 +232,7 @@ export default function PracticeSessionPage() {
     }
   }
 
-  // ── Computed values ────────────────────────────────────────────────────────
+  // Computed values 
 
   const totalQuestions = sessions.reduce((sum, s) => sum + s.questions.length, 0)
   const answeredCount  = Object.keys(answers).length
@@ -243,7 +243,7 @@ export default function PracticeSessionPage() {
     .slice(0, activeSubjectIdx)
     .reduce((sum, s) => sum + s.questions.length, 0) + questionIdx + 1
 
-  // ── Loading state ──────────────────────────────────────────────────────────
+  // Loading state
 
   if (loading) {
     return (
@@ -302,12 +302,12 @@ export default function PracticeSessionPage() {
   const isLast  = activeSubjectIdx === sessions.length - 1 &&
                   questionIdx === currentSession.questions.length - 1
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Render 
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] flex flex-col">
 
-      {/* ── Top bar ── */}
+      {/* Top bar */}
       <header className="sticky top-0 z-30 bg-[#0a0f1e] border-b border-white/10">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
 
@@ -380,7 +380,7 @@ export default function PracticeSessionPage() {
         </div>
       </header>
 
-      {/* ── Question ── */}
+      {/* Question */}
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
 
         {question && (
@@ -519,7 +519,7 @@ export default function PracticeSessionPage() {
         </div>
       </main>
 
-      {/* ── Submit confirmation modal ── */}
+      {/* Submit confirmation modal */}
       {showSubmitModal && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0">
           <div className="w-full max-w-sm bg-[#111827] border border-white/10 rounded-2xl p-6">
