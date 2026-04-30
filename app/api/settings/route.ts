@@ -1,8 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 
 // GET /api/settings?key=free_tier_daily_limit
-// Called by any agent that needs a platform config value
-// Returns: { value: string }
+// Returns: { value: string | null }
 
 export async function GET(request: Request) {
   try {
@@ -10,65 +9,54 @@ export async function GET(request: Request) {
     const key = searchParams.get('key')
 
     if (!key) {
-      return Response.json(
-        { error: 'key is required' },
-        { status: 400 }
-      )
+      return Response.json({ error: 'key is required' }, { status: 400 })
     }
 
     const { data, error } = await supabaseAdmin
-      .rpc('get_setting', { p_key: key })
+      .from('settings')
+      .select('setting_value')
+      .eq('setting_name', key)
+      .single()
 
     if (error) {
-      return Response.json(
-        { error: error.message },
-        { status: 500 }
-      )
+      // Key not found — return null value, not an error
+      if (error.code === 'PGRST116') {
+        return Response.json({ value: null })
+      }
+      return Response.json({ error: error.message }, { status: 500 })
     }
 
-    return Response.json({ value: data })
+    return Response.json({ value: data?.setting_value ?? null })
 
   } catch (err: any) {
-    return Response.json(
-      { error: err.message },
-      { status: 500 }
-    )
+    return Response.json({ error: err.message }, { status: 500 })
   }
 }
 
 // POST /api/settings
-// Called by Agent 6 (Admin Dashboard) to update a setting
-// Admin only — enforced inside the database function
+// Called by Admin Dashboard to update a setting
 // Body: { key: string, value: string }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { key, value } = body
+    const { key, value } = await request.json()
 
     if (!key || value === undefined) {
-      return Response.json(
-        { error: 'key and value are required' },
-        { status: 400 }
-      )
+      return Response.json({ error: 'key and value are required' }, { status: 400 })
     }
 
-    const { data, error } = await supabaseAdmin
-      .rpc('set_setting', { p_key: key, p_value: value })
+    const { error } = await supabaseAdmin
+      .from('settings')
+      .update({ setting_value: String(value) })
+      .eq('setting_name', key)
 
     if (error) {
-      return Response.json(
-        { error: error.message },
-        { status: 500 }
-      )
+      return Response.json({ error: error.message }, { status: 500 })
     }
 
-    return Response.json({ success: data })
+    return Response.json({ success: true })
 
   } catch (err: any) {
-    return Response.json(
-      { error: err.message },
-      { status: 500 }
-    )
+    return Response.json({ error: err.message }, { status: 500 })
   }
-}
+  }
