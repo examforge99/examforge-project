@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@clerk/nextjs'
 
-// ── Subject Data ───────────────────────────────────────────────────────────
+// Subject Data 
 
 const JAMB_SUBJECTS: Record<string, string[]> = {
   Science: [
@@ -48,7 +48,7 @@ const DEPARTMENTS = ['Science', 'Commercial', 'Arts']
 const EXAM_TYPES  = ['JAMB', 'WAEC', 'NECO']
 const TOTAL_STEPS = 3
 
-// ── Component ──────────────────────────────────────────────────────────────
+//  Component 
 
 export default function OnboardingPage() {
   const router        = useRouter()
@@ -84,7 +84,7 @@ export default function OnboardingPage() {
     setSelectedSubs([])
   }, [examType, department])
 
-  // ── Subject helpers ────────────────────────────────────────────────────
+  //  Subject helpers 
 
   function toggleSub(sub: string) {
     if (sub === lockedSub) return // locked — cannot toggle
@@ -106,7 +106,7 @@ export default function OnboardingPage() {
   // All subjects including locked one
   const allSelectedSubs = [lockedSub, ...selectedSubs]
 
-  // ── Validation ─────────────────────────────────────────────────────────
+  //  Validation 
 
   function canProceed(): boolean {
     if (step === 1) return fullName.trim().length >= 2 && examType !== ''
@@ -117,7 +117,7 @@ export default function OnboardingPage() {
     return true // step 3 optional
   }
 
-  // ── Submit ─────────────────────────────────────────────────────────────
+  // Submit 
 
   async function handleSubmit() {
     if (!userId) return
@@ -152,7 +152,7 @@ export default function OnboardingPage() {
     }
   }
 
-  // ── Done screen ────────────────────────────────────────────────────────
+  // Done screen 
 
   if (done) {
     const relevantExams = examDates.filter(e =>
@@ -220,7 +220,7 @@ export default function OnboardingPage() {
     )
   }
 
-  // ── Step screens ───────────────────────────────────────────────────────
+  // Step screens 
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] flex flex-col px-6 py-8">
@@ -243,7 +243,7 @@ export default function OnboardingPage() {
           ))}
         </div>
 
-        {/* ── STEP 1 — Name + Exam Type ─── */}
+        {/*  STEP 1 — Name + Exam Type  */}
         {step === 1 && (
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: 'Georgia, serif' }}>
@@ -292,7 +292,7 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ── STEP 2 — Subject Selection ─── */}
+        {/* STEP 2 — Subject Selection */}
         {step === 2 && (
           <div className="flex-1 overflow-y-auto">
             <h1 className="text-2xl font-bold text-white mb-2" style={{ fontFamily: 'Georgia, serif' }}>
