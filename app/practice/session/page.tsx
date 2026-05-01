@@ -312,7 +312,7 @@ export default function PracticeSessionPage() {
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
 
           {/* Progress */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 max-w-[200px]">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-gray-400">
                 {answeredCount} of {totalQuestions} answered
@@ -526,5 +526,27 @@ export default function PracticeSessionPage() {
             <h3 className="text-white font-bold text-lg mb-2" style={{ fontFamily: 'Georgia, serif' }}>
               Submit your session?
             </h3>
-            <p className="text-gray-400 text-sm mb-2">
-             
+            <p className="text-gray-400 text-sm mb-6">
+              You've answered {answeredCount} out of {totalQuestions} questions. You can't change your answers after submitting.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSubmitModal(false)}
+                className="flex-1 py-3 rounded-xl border border-white/10 text-white text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSubmit()}
+                className="flex-1 py-3 rounded-xl bg-[#2563eb] text-white text-sm font-semibold"
+              >
+                Yes, Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+    }
+          
