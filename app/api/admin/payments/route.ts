@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     if (paymentsError) throw paymentsError
 
     // Fetch user details for all payments
-    const userIds = [...new Set((payments ?? []).map((p: { user_id: string }) => p.user_id).filter(Boolean))]
+    const userIds = Array.from(new Set((payments ?? []).map((p: { user_id: string }) => p.user_id).filter(Boolean)))
     let usersMap: Record<string, Record<string, unknown>> = {}
 
     if (userIds.length > 0) {
