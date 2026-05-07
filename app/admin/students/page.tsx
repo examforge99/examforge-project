@@ -2,25 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
-
-// Renamed — removed "export default"
-function StudentsContent() {
-  const searchParams = useSearchParams()
-  // ... ALL your existing code stays here unchanged
-  return (
-    // ... ALL your existing JSX stays here unchanged
-  )
-}
-
-// New wrapper added at the bottom
-export default function AdminStudentsPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <StudentsContent />
-    </Suspense>
-  )
-}
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Subscription {
