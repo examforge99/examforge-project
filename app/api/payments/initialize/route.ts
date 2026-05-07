@@ -6,6 +6,8 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 const PLAN_KEYS = ['1_month', '3_months', '6_months', '12_months']
 
 async function getSetting(key: string): Promise<string | null> {
