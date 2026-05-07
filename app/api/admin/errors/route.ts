@@ -83,13 +83,13 @@ export async function GET(req: NextRequest) {
     if (errorsError) throw errorsError
 
     // Fetch student details for errors that have a user_id
-    const userIds = [
-      ...new Set(
-        (errors ?? [])
-          .map((e: { user_id: string }) => e.user_id)
-          .filter(Boolean)
-      ),
-    ]
+    const userIds = Array.from(
+  new Set(
+    (errors ?? [])
+      .map((e: { user_id: string }) => e.user_id)
+      .filter(Boolean)
+  )
+)
 
     let usersMap: Record<string, Record<string, unknown>> = {}
 
