@@ -39,13 +39,15 @@ export async function GET(req: NextRequest) {
     const { data: referrals, count, error: referralsError } = await query
     if (referralsError) throw referralsError
 
-    const allUserIds = [
-      ...new Set([
-        ...(referrals ?? []).map((r: { referrer_user_id: string }) => r.referrer_user_id),
-        ...(referrals ?? []).map((r: { referee_user_id: string }) => r.referee_user_id),
-      ].filter(Boolean)),
-    ]
-
+    const allUserIds = Array.from(
+  new Set(
+    [
+      ...(referrals ?? []).map((r: { referrer_user_id: string }) => r.referrer_user_id),
+      ...(referrals ?? []).map((r: { referee_user_id: string }) => r.referee_user_id),
+    ].filter(Boolean)
+  )
+)
+    
     let usersMap: Record<string, Record<string, unknown>> = {}
 
     if (allUserIds.length > 0) {
