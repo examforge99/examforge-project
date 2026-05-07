@@ -6,6 +6,8 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { createHmac } from 'crypto'
 
+export const dynamic = 'force-dynamic'
+
 const PLAN_MONTHS: Record<string, number> = {
   '1_month': 1,
   '3_months': 3,
