@@ -4,6 +4,8 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: Request) {
   try {
     const { referee_user_id, referral_code } = await request.json()
