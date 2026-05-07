@@ -141,9 +141,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch reporter user details
-    const userIds = Array.from(new Set((flags.map((f: { user_id: string }) => f.user_id).filter(Boolean)))
-    let usersMap: Record<string, Record<string, unknown>> = {}
-
+    const userIds = Array.from(new Set(flags.map((f: { user_id: string }) => f.user_id).filter(Boolean)))
+let usersMap: Record<string, Record<string, unknown>> = {}
+    
     if (userIds.length > 0) {
       const { data: users, error: usersError } = await supabaseAdmin
         .from('users')
