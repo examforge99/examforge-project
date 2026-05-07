@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense} from 'react'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Subscription {
@@ -194,7 +195,7 @@ function ConfirmModal({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StudentsPage() {
+function StudentsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -647,4 +648,12 @@ export default function StudentsPage() {
     </div>
   )
                             }
+
+export default function StudentsPage() {
+  return (
+    <Suspense fallback = {<div>Loading...</div>}>
+      <StudentsContent/>
+    </Suspense>
+    )
+}
                             
