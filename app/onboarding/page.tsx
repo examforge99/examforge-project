@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
-import { useFlags } from '@/hooks/useFlags'
 
-const JAMB_SUBJECTS: Record<string, string[]> = {
+// ─── Subject data ─────────────────────────────────────────────────────────────
+
+const JAMB_DEPARTMENTS: Record<string, string[]> = {
   Science: ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Agricultural Science', 'Further Mathematics'],
   Commercial: ['Mathematics', 'Economics', 'Accounting', 'Commerce', 'Government'],
   Arts: ['Literature in English', 'Government', 'History', 'CRS', 'IRS', 'Yoruba', 'Igbo', 'Hausa', 'French'],
@@ -19,530 +20,834 @@ const WAEC_NECO_SUBJECTS: Record<string, string[]> = {
   Languages: ['Yoruba', 'Igbo', 'Hausa', 'French'],
 }
 
-const DEPARTMENTS = ['Science', 'Commercial', 'Arts']
-const EXAM_TYPES  = ['JAMB', 'WAEC', 'NECO']
-const TOTAL_STEPS = 3
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ExamType = 'JAMB' | 'WAEC' | 'NECO' | ''
+type Department = 'Science' | 'Commercial' | 'Arts' | ''
+
+interface FormData {
+  full_name: string
+  exam_type: ExamType
+  department: Department
+  subjects: string[]
+  target_score: number
+  referral_code: string
+}
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+const Icons = {
+  Check: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  ArrowRight: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+    </svg>
+  ),
+  ArrowLeft: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+    </svg>
+  ),
+  Sparkle: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+    </svg>
+  ),
+}
+
+// ─── Step indicator ───────────────────────────────────────────────────────────
+
+function StepIndicator({ current, total, labels }: { current: number; total: number; labels: string[] }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 32 }}>
+      {labels.map((label, i) => {
+        const stepNum = i + 1
+        const isCompleted = stepNum < current
+        const isActive = stepNum === current
+        return (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', flex: i < labels.length - 1 ? 1 : 'none' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <div style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                background: isCompleted ? '#16a34a' : isActive ? '#1d4ed8' : '#e2e8f0',
+                color: isCompleted || isActive ? '#ffffff' : '#94a3b8',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: 'system-ui, sans-serif',
+                transition: 'all 0.2s ease',
+                flexShrink: 0,
+              }}>
+                {isCompleted ? <Icons.Check /> : stepNum}
+              </div>
+              <span style={{
+                fontSize: 10,
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? '#0f172a' : '#94a3b8',
+                fontFamily: 'system-ui, sans-serif',
+                whiteSpace: 'nowrap',
+              }}>
+                {label}
+              </span>
+            </div>
+            {i < labels.length - 1 && (
+              <div style={{
+                flex: 1,
+                height: 2,
+                background: isCompleted ? '#16a34a' : '#e2e8f0',
+                margin: '0 4px',
+                marginBottom: 20,
+                transition: 'background 0.2s ease',
+              }} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OnboardingPage() {
-  const router     = useRouter()
-  const { userId } = useAuth()
-  const { flags }  = useFlags()
+  const { user, isLoaded } = useUser()
+  const router = useRouter()
 
-  const [step,         setStep]         = useState(1)
-  const [fullName,     setFullName]     = useState('')
-  const [examType,     setExamType]     = useState('')
-  const [department,   setDepartment]   = useState('')
-  const [targetScore,  setTargetScore]  = useState('')
-  const [selectedSubs, setSelectedSubs] = useState<string[]>([])
-  const [weakSubjects, setWeakSubjects] = useState<string[]>([])
-  const [referralCode, setReferralCode] = useState('')
-  const [submitting,   setSubmitting]   = useState(false)
-  const [error,        setError]        = useState('')
-  const [aiMessage,    setAiMessage]    = useState('')
-  const [done,         setDone]         = useState(false)
-  const [examDates,    setExamDates]    = useState<any[]>([])
+  const [step, setStep] = useState(1)
+  const [form, setForm] = useState<FormData>({
+    full_name: '',
+    exam_type: '',
+    department: '',
+    subjects: [],
+    target_score: 250,
+    referral_code: '',
+  })
 
-  const isJAMB    = examType === 'JAMB'
-  const lockedSub = isJAMB ? 'Use of English' : 'English Language'
-  const maxSubs   = isJAMB ? 3 : 10
+  const [referralEnabled, setReferralEnabled] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [aiMessage, setAiMessage] = useState('')
+  const [showWelcome, setShowWelcome] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
 
+  // Pre-fill name from Clerk
   useEffect(() => {
-    fetch('/api/exam-calendar/upcoming')
-      .then(r => r.json())
-      .then(d => setExamDates(d.exams ?? []))
-      .catch(() => {})
+    if (isLoaded && user) {
+      const name = [user.firstName, user.lastName].filter(Boolean).join(' ')
+      if (name) setForm((f) => ({ ...f, full_name: name }))
+    }
+  }, [isLoaded, user])
+
+  // Fetch referral flag
+  useEffect(() => {
+    const checkFlag = async () => {
+      try {
+        const res = await fetch('/api/payments/plan-settings')
+        if (res.ok) {
+          const data = await res.json()
+          setReferralEnabled(data.settings?.referral_system_enabled === true)
+        }
+      } catch { /* silent */ }
+    }
+    checkFlag()
   }, [])
 
-  useEffect(() => { setSelectedSubs([]) }, [examType, department])
+  // Build step labels dynamically
+  const getStepLabels = () => {
+    const labels = ['Profile', 'Subjects']
+    if (form.exam_type === 'JAMB') labels.splice(1, 0, 'Department')
+    if (form.exam_type === 'JAMB') labels.push('Target Score')
+    if (referralEnabled) labels.push('Referral')
+    return labels
+  }
 
-  function toggleSub(sub: string) {
-    if (sub === lockedSub) return
-    setSelectedSubs(prev => {
-      if (prev.includes(sub)) return prev.filter(s => s !== sub)
-      if (prev.length >= maxSubs) return prev
-      return [...prev, sub]
+  const stepLabels = getStepLabels()
+  const totalSteps = stepLabels.length
+
+  // Available subjects based on exam type and department
+  const getAvailableSubjects = () => {
+    if (form.exam_type === 'JAMB' && form.department) {
+      return JAMB_DEPARTMENTS[form.department] ?? []
+    }
+    if (form.exam_type === 'WAEC' || form.exam_type === 'NECO') {
+      return Object.entries(WAEC_NECO_SUBJECTS)
+    }
+    return []
+  }
+
+  const toggleSubject = (subject: string) => {
+    const isLocked = (form.exam_type === 'JAMB' && subject === 'Use of English') ||
+      ((form.exam_type === 'WAEC' || form.exam_type === 'NECO') && subject === 'English Language')
+
+    if (isLocked) return
+
+    setForm((f) => {
+      const isSelected = f.subjects.includes(subject)
+      if (isSelected) {
+        return { ...f, subjects: f.subjects.filter((s) => s !== subject) }
+      }
+      // JAMB: max 3 additional subjects (4 total with English)
+      if (f.exam_type === 'JAMB' && f.subjects.length >= 4) return f
+      // WAEC/NECO: max 11 subjects (including English)
+      if ((f.exam_type === 'WAEC' || f.exam_type === 'NECO') && f.subjects.length >= 11) return f
+      return { ...f, subjects: [...f.subjects, subject] }
     })
   }
 
-  function toggleWeak(sub: string) {
-    setWeakSubjects(prev => prev.includes(sub) ? prev.filter(s => s !== sub) : [...prev, sub])
+  // When exam type changes, reset subjects and add locked subject
+  const handleExamTypeChange = (examType: ExamType) => {
+    const locked = examType === 'JAMB' ? 'Use of English' : 'English Language'
+    setForm((f) => ({ ...f, exam_type: examType, subjects: [locked], department: '' }))
   }
 
-  const allSelectedSubs = [lockedSub, ...selectedSubs]
+  const handleDepartmentChange = (dept: Department) => {
+    const locked = 'Use of English'
+    setForm((f) => ({ ...f, department: dept, subjects: [locked] }))
+  }
 
-  function canProceed(): boolean {
-    if (step === 1) return fullName.trim().length >= 2 && examType !== ''
-    if (step === 2) {
-      if (isJAMB) return department !== '' && selectedSubs.length === maxSubs
-      return selectedSubs.length >= 1
+  const canProceed = () => {
+    if (step === 1) return form.full_name.trim().length > 0 && form.exam_type !== ''
+    if (step === 2 && form.exam_type === 'JAMB') return form.department !== ''
+    if (stepLabels[step - 1] === 'Subjects') {
+      if (form.exam_type === 'JAMB') return form.subjects.length === 4
+      return form.subjects.length >= 2
     }
     return true
   }
 
-  async function handleSubmit() {
-    if (!userId) return
-    setSubmitting(true)
+  const handleNext = () => {
+    setError('')
+    if (!canProceed()) {
+      if (step === 1 && !form.full_name.trim()) setError('Please enter your full name')
+      else if (step === 1 && !form.exam_type) setError('Please select your exam type')
+      else if (stepLabels[step - 1] === 'Subjects' && form.exam_type === 'JAMB') setError('Please select exactly 3 more subjects (4 total)')
+      else if (stepLabels[step - 1] === 'Subjects') setError('Please select at least 1 more subject')
+      return
+    }
+    if (step < totalSteps) {
+      setStep((s) => s + 1)
+    } else {
+      handleSubmit()
+    }
+  }
+
+  const handleSubmit = async () => {
+    setLoading(true)
     setError('')
 
     try {
-      // Apply referral code if provided and feature enabled
-      if (referralCode && flags.referral_system_enabled) {
-        await fetch('/api/referrals/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ referee_user_id: userId, referral_code: referralCode }),
-        }).catch(() => {}) // non-blocking
+      // Apply referral code if provided
+      if (referralEnabled && form.referral_code.trim()) {
+        try {
+          await fetch('/api/referrals/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user?.id,
+              referral_code: form.referral_code.trim(),
+            }),
+          })
+        } catch { /* non-blocking */ }
       }
 
+      // Call onboarding API
       const res = await fetch('/api/ai/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id:       userId,
-          full_name:     fullName.trim(),
-          exam_type:     examType,
-          department:    isJAMB ? department : null,
-          target_score:  isJAMB && targetScore ? parseInt(targetScore) : null,
-          weak_subjects: weakSubjects,
-          subjects:      allSelectedSubs,
+          user_id: user?.id,
+          full_name: form.full_name.trim(),
+          exam_type: form.exam_type,
+          department: form.department || null,
+          target_score: form.exam_type === 'JAMB' ? form.target_score : null,
+          weak_subjects: [],
+          subjects: form.subjects,
         }),
       })
 
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Something went wrong')
+      if (!res.ok) throw new Error(data.error ?? 'Onboarding failed')
 
-      setAiMessage(data.recommendation || '')
-      setDone(true)
-    } catch (err: any) {
-      setError(err.message)
+      // Show AI welcome message
+      setAiMessage(data.ai_message ?? data.message ?? "Welcome to ExamForge! Your study journey starts now. Let's get you ready for your exam.")
+      setShowWelcome(true)
+
+      // Auto-redirect after 5 seconds
+      setTimeout(() => {
+        setRedirecting(true)
+        setTimeout(() => router.push('/dashboard'), 800)
+      }, 5000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
-      setSubmitting(false)
+      setLoading(false)
     }
   }
 
-  // ── Done screen ────────────────────────────────────────────────────────────
-  if (done) {
-    const relevantExams = examDates.filter(e =>
-      e.exam_name?.toUpperCase().includes(examType)
-    )
+  // ── Welcome screen ──────────────────────────────────────────────────────────
 
+  if (showWelcome) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12" style={{ backgroundColor: '#faf9f7' }}>
-        <div className="w-full max-w-md">
-          <div className="mb-8 text-center">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="mx-auto">
-              <rect width="32" height="32" rx="8" fill="#1d4ed8" />
-              <rect x="8" y="9" width="14" height="2.5" rx="1.25" fill="white" />
-              <rect x="8" y="14.75" width="10" height="2.5" rx="1.25" fill="white" />
-              <rect x="8" y="20.5" width="14" height="2.5" rx="1.25" fill="white" />
-            </svg>
+      <div style={{
+        minHeight: '100vh',
+        background: '#faf9f7',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        fontFamily: 'system-ui, sans-serif',
+      }}>
+        <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
+          {/* Animated icon */}
+          <div style={{
+            width: 72,
+            height: 72,
+            borderRadius: '50%',
+            background: '#f0f4ff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 24px',
+            color: '#1d4ed8',
+            animation: 'popIn 0.4s ease',
+          }}>
+            <Icons.Sparkle />
           </div>
 
-          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: '#f0f4ff', border: '1px solid rgba(29,78,216,0.2)' }}>
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="#1d4ed8" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-
-          <h1 className="text-2xl font-bold text-center mb-2" style={{ fontFamily: 'Georgia, serif', color: '#0f172a' }}>
-            You're ready, {fullName.split(' ')[0]}
+          <h1 style={{
+            fontFamily: 'Georgia, serif',
+            fontSize: 28,
+            fontWeight: 700,
+            color: '#0f172a',
+            margin: '0 0 8px',
+            letterSpacing: '-0.3px',
+          }}>
+            Welcome, {form.full_name.split(' ')[0]}!
           </h1>
-          <p className="text-sm text-center mb-8" style={{ color: '#64748b' }}>
-            Your profile is set. Your coach is ready.
+          <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 28px' }}>
+            Your AI coach has something to say
           </p>
 
-          {aiMessage && (
-            <div className="rounded-xl p-4 border-l-4 mb-6" style={{ backgroundColor: '#f0f4ff', borderLeftColor: '#1d4ed8' }}>
-              <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#4f8ef7' }}>Your Coach</p>
-              <p className="text-sm leading-relaxed" style={{ color: '#0f172a' }}>{aiMessage}</p>
+          {/* AI message card */}
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid rgba(15,23,42,0.08)',
+            borderRadius: 16,
+            padding: '24px',
+            textAlign: 'left',
+            marginBottom: 28,
+            boxShadow: '0 2px 16px rgba(15,23,42,0.06)',
+            position: 'relative',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 14,
+              paddingBottom: 14,
+              borderBottom: '1px solid rgba(15,23,42,0.06)',
+            }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: '#0f172a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                flexShrink: 0,
+              }}>
+                <Icons.Sparkle />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>ExamForge AI</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>Your personal study coach</div>
+              </div>
             </div>
-          )}
 
-          {relevantExams.length > 0 && (
-            <div className="rounded-xl p-4 mb-8" style={{ backgroundColor: '#ffffff', border: '1px solid rgba(15,23,42,0.08)' }}>
-              <p className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: '#64748b' }}>
-                Upcoming {examType} Dates
-              </p>
-              {relevantExams.map((exam, i) => (
-                <div key={i} className="flex justify-between items-center py-2" style={{ borderBottom: i < relevantExams.length - 1 ? '1px solid rgba(15,23,42,0.06)' : 'none' }}>
-                  <span className="text-sm" style={{ color: '#475569' }}>{exam.exam_name}</span>
-                  <span className="text-sm font-bold" style={{ color: '#1d4ed8' }}>{exam.days_until} days</span>
-                </div>
-              ))}
+            <p style={{
+              fontSize: 15,
+              color: '#0f172a',
+              lineHeight: 1.75,
+              margin: 0,
+              fontFamily: 'Georgia, serif',
+            }}>
+              {aiMessage}
+            </p>
+          </div>
+
+          {/* Progress bar for auto-redirect */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{
+              width: '100%',
+              height: 3,
+              background: '#e2e8f0',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                background: '#1d4ed8',
+                borderRadius: 2,
+                animation: 'progress 5s linear forwards',
+              }} />
             </div>
-          )}
+            <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
+              {redirecting ? 'Taking you to your dashboard...' : 'Redirecting to your dashboard in 5 seconds'}
+            </p>
+          </div>
 
           <button
-            onClick={() => router.push('/dashboard')}
-            className="w-full py-4 rounded-xl font-semibold text-base text-white transition-colors"
-            style={{ backgroundColor: '#1d4ed8' }}
+            onClick={() => { setRedirecting(true); router.push('/dashboard') }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '12px 28px',
+              background: '#1d4ed8',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 10,
+              fontSize: 14,
+              fontFamily: 'system-ui, sans-serif',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
           >
-            Start Learning
+            Go to Dashboard
+            <Icons.ArrowRight />
           </button>
         </div>
+
+        <style>{`
+          @keyframes popIn {
+            from { transform: scale(0.6); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+          }
+          @keyframes progress {
+            from { width: 0%; }
+            to { width: 100%; }
+          }
+        `}</style>
       </div>
     )
   }
 
-  // ── Step screens ───────────────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen flex flex-col px-6 py-8" style={{ backgroundColor: '#faf9f7' }}>
-      <div className="w-full max-w-md mx-auto flex-1 flex flex-col">
+  // ── Form steps ──────────────────────────────────────────────────────────────
 
+  const currentStepLabel = stepLabels[step - 1]
+  const availableSubjects = getAvailableSubjects()
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: '#faf9f7',
+      display: 'flex',
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+      padding: '40px 20px 80px',
+      fontFamily: 'system-ui, sans-serif',
+    }}>
+      <div style={{ width: '100%', maxWidth: 520 }}>
         {/* Logo */}
-        <div className="mb-8">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <rect width="32" height="32" rx="8" fill="#1d4ed8" />
-            <rect x="8" y="9" width="14" height="2.5" rx="1.25" fill="white" />
-            <rect x="8" y="14.75" width="10" height="2.5" rx="1.25" fill="white" />
-            <rect x="8" y="20.5" width="14" height="2.5" rx="1.25" fill="white" />
-          </svg>
+        <div style={{
+          fontFamily: 'Georgia, serif',
+          fontSize: 20,
+          fontWeight: 700,
+          color: '#0f172a',
+          marginBottom: 32,
+          textAlign: 'center',
+        }}>
+          ExamForge
         </div>
 
         {/* Step indicator */}
-        <div className="flex gap-2 mb-8">
-          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <div
-              key={i}
-              className="h-1 flex-1 rounded-full transition-colors duration-300"
-              style={{ backgroundColor: i + 1 <= step ? '#1d4ed8' : 'rgba(15,23,42,0.1)' }}
-            />
-          ))}
-        </div>
+        <StepIndicator current={step} total={totalSteps} labels={stepLabels} />
 
-        {/* STEP 1 — Name + Exam Type */}
-        {step === 1 && (
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'Georgia, serif', color: '#0f172a' }}>
-              Welcome to ExamForge
-            </h1>
-            <p className="text-sm mb-8" style={{ color: '#64748b' }}>
-              Let's set you up for success. This takes less than 2 minutes.
-            </p>
+        {/* Card */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid rgba(15,23,42,0.08)',
+          borderRadius: 16,
+          padding: '28px',
+          boxShadow: '0 2px 16px rgba(15,23,42,0.06)',
+        }}>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2" style={{ color: '#475569' }}>Full Name</label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-                placeholder="e.g. Adisa Victor"
-                autoFocus
-                className="w-full px-4 py-3 rounded-xl text-base focus:outline-none"
-                style={{
-                  border: '2px solid rgba(15,23,42,0.08)',
-                  backgroundColor: '#ffffff',
-                  color: '#0f172a',
-                }}
-              />
+          {/* Error */}
+          {error && (
+            <div style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: 8,
+              padding: '10px 14px',
+              color: '#dc2626',
+              fontSize: 13,
+              marginBottom: 20,
+            }}>
+              {error}
             </div>
+          )}
 
+          {/* ── STEP 1: Profile ── */}
+          {step === 1 && (
             <div>
-              <label className="block text-sm font-medium mb-3" style={{ color: '#475569' }}>
-                Which exam are you preparing for?
-              </label>
-              <div className="flex gap-3">
-                {EXAM_TYPES.map(type => (
-                  <button
-                    key={type}
-                    onClick={() => setExamType(type)}
-                    className="flex-1 py-3.5 rounded-xl border-2 font-semibold text-sm transition-all"
-                    style={{
-                      borderColor: examType === type ? '#1d4ed8' : 'rgba(15,23,42,0.08)',
-                      backgroundColor: examType === type ? '#f0f4ff' : '#ffffff',
-                      color: examType === type ? '#1d4ed8' : '#475569',
-                    }}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Tell us about yourself
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 24px', lineHeight: 1.6 }}>
+                This helps us personalise your study experience
+              </p>
 
-        {/* STEP 2 — Subject Selection */}
-        {step === 2 && (
-          <div className="flex-1 overflow-y-auto">
-            <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'Georgia, serif', color: '#0f172a' }}>
-              Select Subjects
-            </h1>
-
-            {isJAMB ? (
-              <>
-                <p className="text-sm mb-6" style={{ color: '#64748b' }}>
-                  Select your department, then choose 3 subjects. Use of English is compulsory.
-                </p>
-
-                <div className="mb-6">
-                  <p className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: '#64748b' }}>Department</p>
-                  <div className="flex gap-3">
-                    {DEPARTMENTS.map(dept => (
-                      <button
-                        key={dept}
-                        onClick={() => setDepartment(dept)}
-                        className="flex-1 py-3 rounded-xl border-2 text-sm font-semibold transition-all"
-                        style={{
-                          borderColor: department === dept ? '#1d4ed8' : 'rgba(15,23,42,0.08)',
-                          backgroundColor: department === dept ? '#f0f4ff' : '#ffffff',
-                          color: department === dept ? '#1d4ed8' : '#475569',
-                        }}
-                      >
-                        {dept}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Locked subject */}
-                <div className="mb-4">
-                  <p className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: '#64748b' }}>Compulsory</p>
-                  <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ border: '1px solid rgba(29,78,216,0.2)', backgroundColor: '#f0f4ff' }}>
-                    <div className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: '#1d4ed8' }}>
-                      <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <span className="text-sm font-medium" style={{ color: '#0f172a' }}>{lockedSub}</span>
-                    <span className="ml-auto text-xs" style={{ color: '#64748b' }}>Locked</span>
-                  </div>
-                </div>
-
-                {department && (
-                  <div>
-                    <p className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: '#64748b' }}>
-                      Choose 3 subjects — {selectedSubs.length}/3 selected
-                    </p>
-                    <div className="space-y-2">
-                      {JAMB_SUBJECTS[department]?.map(sub => {
-                        const isSelected = selectedSubs.includes(sub)
-                        const isDisabled = !isSelected && selectedSubs.length >= maxSubs
-                        return (
-                          <button
-                            key={sub}
-                            onClick={() => toggleSub(sub)}
-                            disabled={isDisabled}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left"
-                            style={{
-                              borderColor: isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.08)',
-                              backgroundColor: isSelected ? '#f0f4ff' : '#ffffff',
-                              opacity: isDisabled ? 0.4 : 1,
-                              cursor: isDisabled ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            <div className="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0"
-                              style={{ borderColor: isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.2)', backgroundColor: isSelected ? '#1d4ed8' : 'transparent' }}>
-                              {isSelected && (
-                                <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </div>
-                            <span className="text-sm" style={{ color: isSelected ? '#0f172a' : '#475569', fontWeight: isSelected ? 600 : 400 }}>{sub}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Target score */}
-                <div className="mt-6">
-                  <label className="block text-sm font-medium mb-1" style={{ color: '#475569' }}>
-                    JAMB Target Score <span className="font-normal" style={{ color: '#64748b' }}>(optional)</span>
-                  </label>
-                  <p className="text-xs mb-3" style={{ color: '#64748b' }}>Range: 100–400</p>
-                  <div className="flex flex-wrap gap-2">
-                    {['200', '220', '240', '260', '280', '300', '320', '340', '360', '380', '400'].map(score => (
-                      <button
-                        key={score}
-                        onClick={() => setTargetScore(score)}
-                        className="px-3 py-2 rounded-lg border text-sm font-semibold transition-all"
-                        style={{
-                          borderColor: targetScore === score ? '#1d4ed8' : 'rgba(15,23,42,0.08)',
-                          backgroundColor: targetScore === score ? '#f0f4ff' : '#ffffff',
-                          color: targetScore === score ? '#1d4ed8' : '#475569',
-                        }}
-                      >
-                        {score}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm mb-6" style={{ color: '#64748b' }}>
-                  English Language is compulsory. Select up to 10 more subjects.{' '}
-                  <span className="font-medium" style={{ color: '#1d4ed8' }}>{selectedSubs.length}/10 selected</span>
-                </p>
-
-                {/* Locked */}
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl mb-4" style={{ border: '1px solid rgba(29,78,216,0.2)', backgroundColor: '#f0f4ff' }}>
-                  <div className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: '#1d4ed8' }}>
-                    <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <span className="text-sm font-medium" style={{ color: '#0f172a' }}>{lockedSub}</span>
-                  <span className="ml-auto text-xs" style={{ color: '#64748b' }}>Locked</span>
-                </div>
-
-                {Object.entries(WAEC_NECO_SUBJECTS).map(([category, subs]) => (
-                  <div key={category} className="mb-5">
-                    <p className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: '#64748b' }}>{category}</p>
-                    <div className="space-y-2">
-                      {subs.map(sub => {
-                        const isSelected = selectedSubs.includes(sub)
-                        const isDisabled = !isSelected && selectedSubs.length >= maxSubs
-                        return (
-                          <button
-                            key={sub}
-                            onClick={() => toggleSub(sub)}
-                            disabled={isDisabled}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left"
-                            style={{
-                              borderColor: isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.08)',
-                              backgroundColor: isSelected ? '#f0f4ff' : '#ffffff',
-                              opacity: isDisabled ? 0.4 : 1,
-                              cursor: isDisabled ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            <div className="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0"
-                              style={{ borderColor: isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.2)', backgroundColor: isSelected ? '#1d4ed8' : 'transparent' }}>
-                              {isSelected && (
-                                <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </div>
-                            <span className="text-sm" style={{ color: isSelected ? '#0f172a' : '#475569', fontWeight: isSelected ? 600 : 400 }}>{sub}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* STEP 3 — Weak Subjects + Referral */}
-        {step === 3 && (
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'Georgia, serif', color: '#0f172a' }}>
-              Which subjects worry you most?
-            </h1>
-            <p className="text-sm mb-8" style={{ color: '#64748b' }}>
-              Be honest — this helps your AI coach focus where it matters.{' '}
-              <span className="font-medium" style={{ color: '#1d4ed8' }}>Optional</span>
-            </p>
-
-            <div className="space-y-2">
-              {allSelectedSubs.map(sub => {
-                const isWeak   = weakSubjects.includes(sub)
-                const isLocked = sub === lockedSub
-                return (
-                  <button
-                    key={sub}
-                    onClick={() => !isLocked && toggleWeak(sub)}
-                    disabled={isLocked}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left"
-                    style={{
-                      borderColor: isWeak ? '#1d4ed8' : 'rgba(15,23,42,0.08)',
-                      backgroundColor: isWeak ? '#f0f4ff' : '#ffffff',
-                      cursor: isLocked ? 'default' : 'pointer',
-                    }}
-                  >
-                    <div className="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0"
-                      style={{ borderColor: isWeak ? '#1d4ed8' : 'rgba(15,23,42,0.2)', backgroundColor: isWeak ? '#1d4ed8' : 'transparent' }}>
-                      {isWeak && (
-                        <svg className="w-3 h-3" fill="white" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className="text-sm" style={{ color: isWeak ? '#0f172a' : '#475569', fontWeight: isWeak ? 600 : 400 }}>{sub}</span>
-                    {isLocked && <span className="ml-auto text-xs" style={{ color: '#94a3b8' }}>Compulsory</span>}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Referral code — only shown if flag is on */}
-            {flags.referral_system_enabled && (
-              <div className="mt-8">
-                <label className="block text-sm font-medium mb-2" style={{ color: '#475569' }}>
-                  Have a referral code?{' '}
-                  <span className="font-normal" style={{ color: '#64748b' }}>(Optional)</span>
+              {/* Full name */}
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                  Full Name
                 </label>
                 <input
                   type="text"
-                  value={referralCode}
-                  onChange={e => setReferralCode(e.target.value.trim().toUpperCase())}
-                  placeholder="e.g. ABCD1234"
-                  maxLength={8}
-                  className="w-full px-4 py-3 rounded-xl text-sm font-mono focus:outline-none"
+                  placeholder="Enter your full name"
+                  value={form.full_name}
+                  onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                   style={{
-                    border: '2px solid rgba(15,23,42,0.08)',
-                    backgroundColor: '#ffffff',
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid rgba(15,23,42,0.12)',
+                    borderRadius: 8,
+                    fontSize: 14,
                     color: '#0f172a',
+                    background: '#faf9f7',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: 'system-ui, sans-serif',
                   }}
                 />
               </div>
-            )}
-          </div>
-        )}
 
-        {/* Error */}
-        {error && (
-          <div className="mt-4 rounded-xl px-4 py-3 flex items-start gap-2" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="shrink-0 mt-0.5">
-              <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-            <p className="text-sm" style={{ color: '#b91c1c' }}>{error}</p>
-          </div>
-        )}
-
-        {/* Navigation buttons */}
-        <div className="mt-8 flex gap-3">
-          {step > 1 && (
-            <button
-              onClick={() => setStep(s => s - 1)}
-              className="flex-1 py-3.5 rounded-xl border font-semibold text-sm transition-colors"
-              style={{ borderColor: 'rgba(15,23,42,0.12)', color: '#475569', backgroundColor: '#ffffff' }}
-            >
-              Back
-            </button>
+              {/* Exam type */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 10 }}>
+                  Which exam are you preparing for?
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {(['JAMB', 'WAEC', 'NECO'] as ExamType[]).map((exam) => (
+                    <button
+                      key={exam}
+                      onClick={() => handleExamTypeChange(exam)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '14px 16px',
+                        border: `2px solid ${form.exam_type === exam ? '#1d4ed8' : 'rgba(15,23,42,0.1)'}`,
+                        borderRadius: 10,
+                        background: form.exam_type === exam ? '#f0f4ff' : '#ffffff',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>{exam}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontFamily: 'system-ui, sans-serif' }}>
+                          {exam === 'JAMB' ? 'Joint Admissions and Matriculation Board' : exam === 'WAEC' ? 'West African Examinations Council' : 'National Examinations Council'}
+                        </div>
+                      </div>
+                      {form.exam_type === exam && (
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+                          <Icons.Check />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
 
-          {step < TOTAL_STEPS ? (
-            <button
-              onClick={() => setStep(s => s + 1)}
-              disabled={!canProceed()}
-              className="flex-1 py-3.5 rounded-xl font-semibold text-sm text-white transition-colors disabled:opacity-40"
-              style={{ backgroundColor: '#1d4ed8' }}
-            >
-              Continue
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="flex-1 py-3.5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-60"
-              style={{ backgroundColor: '#1d4ed8' }}
-            >
-              {submitting ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          {/* ── STEP 2: Department (JAMB only) ── */}
+          {step === 2 && form.exam_type === 'JAMB' && currentStepLabel === 'Department' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Choose your department
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 24px', lineHeight: 1.6 }}>
+                This determines the subjects available for your JAMB combination
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(['Science', 'Commercial', 'Arts'] as Department[]).map((dept) => (
+                  <button
+                    key={dept}
+                    onClick={() => handleDepartmentChange(dept)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '14px 16px',
+                      border: `2px solid ${form.department === dept ? '#1d4ed8' : 'rgba(15,23,42,0.1)'}`,
+                      borderRadius: 10,
+                      background: form.department === dept ? '#f0f4ff' : '#ffffff',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>{dept}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontFamily: 'system-ui, sans-serif' }}>
+                        {JAMB_DEPARTMENTS[dept]?.slice(0, 3).join(', ')}...
+                      </div>
+                    </div>
+                    {form.department === dept && (
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+                        <Icons.Check />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP: Subjects ── */}
+          {currentStepLabel === 'Subjects' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Select your subjects
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 6px', lineHeight: 1.6 }}>
+                {form.exam_type === 'JAMB'
+                  ? 'Use of English is compulsory. Pick 3 more from your department.'
+                  : 'English Language is compulsory. Pick up to 10 more subjects.'}
+              </p>
+              <p style={{ fontSize: 13, color: '#1d4ed8', fontWeight: 600, margin: '0 0 20px' }}>
+                {form.subjects.length} selected
+                {form.exam_type === 'JAMB' ? ' / 4 required' : ' / 11 maximum'}
+              </p>
+
+              {form.exam_type === 'JAMB' ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {/* Locked subject */}
+                  <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icons.Check /> Use of English
+                  </div>
+                  {availableSubjects.map((subject) => {
+                    const isSelected = form.subjects.includes(subject)
+                    return (
+                      <button
+                        key={subject}
+                        onClick={() => toggleSubject(subject)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: 8,
+                          border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.12)'}`,
+                          background: isSelected ? '#f0f4ff' : '#ffffff',
+                          color: isSelected ? '#1d4ed8' : '#475569',
+                          fontSize: 13,
+                          fontWeight: isSelected ? 600 : 400,
+                          fontFamily: 'system-ui, sans-serif',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        {isSelected && <Icons.Check />}
+                        {subject}
+                      </button>
+                    )
+                  })}
+                </div>
               ) : (
-                'Finish Setup'
+                // WAEC/NECO — grouped by category
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {/* Locked subject */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Compulsory</div>
+                    <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Icons.Check /> English Language
+                    </div>
+                  </div>
+
+                  {(availableSubjects as [string, string[]][]).map(([group, subjects]) => (
+                    <div key={group}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{group}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {subjects.map((subject) => {
+                          const isSelected = form.subjects.includes(subject)
+                          const maxReached = form.subjects.length >= 11
+                          return (
+                            <button
+                              key={subject}
+                              onClick={() => toggleSubject(subject)}
+                              disabled={!isSelected && maxReached}
+                              style={{
+                                padding: '7px 12px',
+                                borderRadius: 8,
+                                border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.12)'}`,
+                                background: isSelected ? '#f0f4ff' : (!isSelected && maxReached) ? '#fafaf9' : '#ffffff',
+                                color: isSelected ? '#1d4ed8' : (!isSelected && maxReached) ? '#94a3b8' : '#475569',
+                                fontSize: 13,
+                                fontWeight: isSelected ? 600 : 400,
+                                fontFamily: 'system-ui, sans-serif',
+                                cursor: (!isSelected && maxReached) ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                              }}
+                            >
+                              {isSelected && <Icons.Check />}
+                              {subject}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </button>
+            </div>
           )}
+
+          {/* ── STEP: Target Score (JAMB only) ── */}
+          {currentStepLabel === 'Target Score' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                What is your target score?
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 28px', lineHeight: 1.6 }}>
+                JAMB scores range from 100–400. Your AI coach will tailor sessions to help you hit your goal.
+              </p>
+
+              <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 56, fontWeight: 700, color: '#1d4ed8', lineHeight: 1 }}>
+                  {form.target_score}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>out of 400</div>
+              </div>
+
+              <input
+                type="range"
+                min={100}
+                max={400}
+                step={5}
+                value={form.target_score}
+                onChange={(e) => setForm((f) => ({ ...f, target_score: parseInt(e.target.value) }))}
+                style={{ width: '100%', accentColor: '#1d4ed8', cursor: 'pointer' }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>100</span>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>400</span>
+              </div>
+
+              {/* Score context */}
+              <div style={{ marginTop: 24, padding: '14px 16px', borderRadius: 10, background: '#f0f4ff', border: '1px solid #c7d2fe' }}>
+                <p style={{ fontSize: 13, color: '#1d4ed8', margin: 0, fontFamily: 'system-ui, sans-serif', lineHeight: 1.6 }}>
+                  {form.target_score >= 300
+                    ? 'Ambitious target. Your AI coach will push you hard to reach this.'
+                    : form.target_score >= 220
+                    ? 'Great target for most courses. Consistent practice will get you there.'
+                    : 'A solid starting point. Build your foundation and aim higher as you improve.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP: Referral Code ── */}
+          {currentStepLabel === 'Referral' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Do you have a referral code?
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 28px', lineHeight: 1.6 }}>
+                If a friend referred you, enter their code to give them a reward. This step is optional.
+              </p>
+
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                  Referral Code (optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. JOHN2024"
+                  value={form.referral_code}
+                  onChange={(e) => setForm((f) => ({ ...f, referral_code: e.target.value.toUpperCase() }))}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid rgba(15,23,42,0.12)',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    color: '#0f172a',
+                    background: '#faf9f7',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.05em',
+                  }}
+                />
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', fontFamily: 'system-ui, sans-serif' }}>
+                  Leave blank if you don&apos;t have one — you can skip this step.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Navigation buttons */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28, gap: 12 }}>
+            {step > 1 ? (
+              <button
+                onClick={() => { setError(''); setStep((s) => s - 1) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, background: '#ffffff', color: '#475569', fontSize: 14, fontFamily: 'system-ui, sans-serif', cursor: 'pointer' }}
+              >
+                <Icons.ArrowLeft /> Back
+              </button>
+            ) : <div />}
+
+            <button
+              onClick={handleNext}
+              disabled={loading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 24px',
+                border: 'none',
+                borderRadius: 8,
+                background: '#1d4ed8',
+                color: '#ffffff',
+                fontSize: 14,
+                fontFamily: 'system-ui, sans-serif',
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+                transition: 'all 0.15s ease',
+                marginLeft: 'auto',
+              }}
+            >
+              {loading ? 'Setting up your account...' : step === totalSteps ? 'Complete Setup' : 'Continue'}
+              {!loading && <Icons.ArrowRight />}
+            </button>
+          </div>
         </div>
 
+        {/* Step progress text */}
+        <p style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8', marginTop: 16, fontFamily: 'system-ui, sans-serif' }}>
+          Step {step} of {totalSteps}
+        </p>
       </div>
     </div>
   )
-                  }
+                      }
+           
