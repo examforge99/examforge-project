@@ -678,39 +678,53 @@ const getAvailableSubjects = (): string[] => {
                     </div>
                   </div>
 
-                  {(availableSubjects as [string, string[]][]).map(([group, subjects]) => (
-                    <div key={group}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{group}</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {subjects.map((subject) => {
-                          const isSelected = form.subjects.includes(subject)
-                          const maxReached = form.subjects.length >= 11
-                          return (
-                            <button
-                              key={subject}
-                              onClick={() => toggleSubject(subject)}
-                              disabled={!isSelected && maxReached}
-                              style={{
-                                padding: '7px 12px',
-                                borderRadius: 8,
-                                border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.12)'}`,
-                                background: isSelected ? '#f0f4ff' : (!isSelected && maxReached) ? '#fafaf9' : '#ffffff',
-                                color: isSelected ? '#1d4ed8' : (!isSelected && maxReached) ? '#94a3b8' : '#475569',
-                                fontSize: 13,
-                                fontWeight: isSelected ? 600 : 400,
-                                fontFamily: 'system-ui, sans-serif',
-                                cursor: (!isSelected && maxReached) ? 'not-allowed' : 'pointer',
-                                transition: 'all 0.15s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 5,
-                              }}
-                            >
-                              {isSelected && <Icons.Check />}
-                              {subject}
-                            </button>
-                          )
-                        })}
+                  {availableSubjects.map((subject) => {
+  const isLocked =
+    (form.exam_type === 'JAMB' && subject === 'Use of English') ||
+    ((form.exam_type === 'WAEC' || form.exam_type === 'NECO') && subject === 'English Language')
+  const isSelected = form.subjects.includes(subject)
+
+  return (
+    <button
+      key={subject}
+      onClick={() => toggleSubject(subject)}
+      disabled={isLocked}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 14px',
+        border: `2px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.1)'}`,
+        borderRadius: 8,
+        background: isSelected ? '#f0f4ff' : '#ffffff',
+        cursor: isLocked ? 'default' : 'pointer',
+        width: '100%',
+        textAlign: 'left',
+      }}
+    >
+      <div style={{
+        width: 18,
+        height: 18,
+        borderRadius: 4,
+        border: `2px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.2)'}`,
+        background: isSelected ? '#1d4ed8' : 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        color: '#ffffff',
+      }}>
+        {isSelected && <Icons.Check />}
+      </div>
+      <span style={{ fontSize: 14, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
+        {subject}
+      </span>
+      {isLocked && (
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>Locked</span>
+      )}
+    </button>
+  )
+})}
                       </div>
                     </div>
                   ))}
