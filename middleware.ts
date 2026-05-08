@@ -7,11 +7,11 @@ import { createClient } from '@supabase/supabase-js'
 
 const isPublicRoute = createRouteMatcher([
   '/',
-  '/login(.*)',           // Clerk sign-in — matches master prompt
-  '/signup(.*)',          // Clerk sign-up — matches master prompt
-  '/maintenance',         // Must be public — maintenance redirect target
-  '/banned',              // Must be public — banned redirect target
-  '/subscribe(.*)',       // Must be public — subscription gate redirect target
+  '/sign-in(.*)',              // app/sign-in/[[...sign-in]]/page.tsx
+  '/signup(.*)',               // app/signup/[[...sign-up]]/page.tsx
+  '/maintenance',              // Must be public — maintenance redirect target
+  '/banned',                   // Must be public — banned redirect target
+  '/subscribe(.*)',            // Must be public — subscription gate redirect target
   '/api/webhooks/clerk',
   '/api/webhooks/paystack',
   '/api/payments/verify(.*)', // Browser redirect after Paystack payment — must be public
@@ -59,11 +59,11 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     return NextResponse.next()
   }
 
-  // ── 2. Not signed in → redirect to login ────────────────────────────────
+  // ── 2. Not signed in → redirect to sign-in ──────────────────────────────
   if (!userId) {
-    const loginUrl = new URL('/login', req.url)
-    loginUrl.searchParams.set('redirect_url', req.url)
-    return NextResponse.redirect(loginUrl)
+    const signInUrl = new URL('/sign-in', req.url)
+    signInUrl.searchParams.set('redirect_url', req.url)
+    return NextResponse.redirect(signInUrl)
   }
 
   // ── Authenticated from here ──────────────────────────────────────────────
@@ -143,10 +143,10 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   }
 
   // ── 10. Subscription gate ────────────────────────────────────────────────
-  // grace_period — not 'grace' — matches master prompt and subscriptions table
+  // grace_period — matches master prompt and subscriptions table
   const hasAccess =
     subscription_status === 'active' ||
-    subscription_status === 'grace_period' ||   // correct value per master prompt
+    subscription_status === 'grace_period' ||
     subscription_status === 'demo'
 
   if (!hasAccess) {
@@ -174,4 +174,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
-  
