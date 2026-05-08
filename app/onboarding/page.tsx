@@ -173,15 +173,15 @@ export default function OnboardingPage() {
   const totalSteps = stepLabels.length
 
   // Available subjects based on exam type and department
-  const getAvailableSubjects = () => {
-    if (form.exam_type === 'JAMB' && form.department) {
-      return JAMB_DEPARTMENTS[form.department] ?? []
-    }
-    if (form.exam_type === 'WAEC' || form.exam_type === 'NECO') {
-      return Object.entries(WAEC_NECO_SUBJECTS)
-    }
-    return []
+const getAvailableSubjects = (): string[] => {
+  if (form.exam_type === 'JAMB' && form.department) {
+    return JAMB_DEPARTMENTS[form.department] ?? []
   }
+  if (form.exam_type === 'WAEC' || form.exam_type === 'NECO') {
+    return Object.values(WAEC_NECO_SUBJECTS).flat()
+  }
+  return []
+}
 
   const toggleSubject = (subject: string) => {
     const isLocked = (form.exam_type === 'JAMB' && subject === 'Use of English') ||
