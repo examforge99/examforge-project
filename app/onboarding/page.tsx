@@ -115,7 +115,7 @@ function StepIndicator({ current, total, labels }: { current: number; total: num
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OnboardingPage() {
   const { user, isLoaded } = useUser()
@@ -150,17 +150,17 @@ export default function OnboardingPage() {
   useEffect(() => {
     const checkFlag = async () => {
       try {
-        const res = await fetch('/api/payments/plan-settings')
+        const res = await fetch('/api/flags')
         if (res.ok) {
           const data = await res.json()
-          setReferralEnabled(data.settings?.referral_system_enabled === true)
+          setReferralEnabled(data.flags?.referral_system_enabled === true)
         }
       } catch { /* silent */ }
     }
     checkFlag()
   }, [])
 
-  // Build step labels dynamically
+  // Build step labels dynamically based on exam type
   const getStepLabels = () => {
     const labels = ['Profile', 'Subjects']
     if (form.exam_type === 'JAMB') labels.splice(1, 0, 'Department')
@@ -171,52 +171,49 @@ export default function OnboardingPage() {
 
   const stepLabels = getStepLabels()
   const totalSteps = stepLabels.length
+  const currentStepLabel = stepLabels[step - 1]
 
-  // Available subjects based on exam type and department
-const getAvailableSubjects = (): string[] => {
-  if (form.exam_type === 'JAMB' && form.department) {
-    return JAMB_DEPARTMENTS[form.department] ?? []
+  // Available subjects — always returns flat string[]
+  const getAvailableSubjects = (): string[] => {
+    if (form.exam_type === 'JAMB' && form.department) {
+      return JAMB_DEPARTMENTS[form.department] ?? []
+    }
+    if (form.exam_type === 'WAEC' || form.exam_type === 'NECO') {
+      return Object.values(WAEC_NECO_SUBJECTS).flat()
+    }
+    return []
   }
-  if (form.exam_type === 'WAEC' || form.exam_type === 'NECO') {
-    return Object.values(WAEC_NECO_SUBJECTS).flat()
-  }
-  return []
-}
+
+  const availableSubjects = getAvailableSubjects()
 
   const toggleSubject = (subject: string) => {
-    const isLocked = (form.exam_type === 'JAMB' && subject === 'Use of English') ||
+    const isLocked =
+      (form.exam_type === 'JAMB' && subject === 'Use of English') ||
       ((form.exam_type === 'WAEC' || form.exam_type === 'NECO') && subject === 'English Language')
-
     if (isLocked) return
 
     setForm((f) => {
       const isSelected = f.subjects.includes(subject)
-      if (isSelected) {
-        return { ...f, subjects: f.subjects.filter((s) => s !== subject) }
-      }
-      // JAMB: max 3 additional subjects (4 total with English)
+      if (isSelected) return { ...f, subjects: f.subjects.filter((s) => s !== subject) }
       if (f.exam_type === 'JAMB' && f.subjects.length >= 4) return f
-      // WAEC/NECO: max 11 subjects (including English)
       if ((f.exam_type === 'WAEC' || f.exam_type === 'NECO') && f.subjects.length >= 11) return f
       return { ...f, subjects: [...f.subjects, subject] }
     })
   }
 
-  // When exam type changes, reset subjects and add locked subject
   const handleExamTypeChange = (examType: ExamType) => {
     const locked = examType === 'JAMB' ? 'Use of English' : 'English Language'
     setForm((f) => ({ ...f, exam_type: examType, subjects: [locked], department: '' }))
   }
 
   const handleDepartmentChange = (dept: Department) => {
-    const locked = 'Use of English'
-    setForm((f) => ({ ...f, department: dept, subjects: [locked] }))
+    setForm((f) => ({ ...f, department: dept, subjects: ['Use of English'] }))
   }
 
   const canProceed = () => {
     if (step === 1) return form.full_name.trim().length > 0 && form.exam_type !== ''
-    if (step === 2 && form.exam_type === 'JAMB') return form.department !== ''
-    if (stepLabels[step - 1] === 'Subjects') {
+    if (currentStepLabel === 'Department') return form.department !== ''
+    if (currentStepLabel === 'Subjects') {
       if (form.exam_type === 'JAMB') return form.subjects.length === 4
       return form.subjects.length >= 2
     }
@@ -228,8 +225,9 @@ const getAvailableSubjects = (): string[] => {
     if (!canProceed()) {
       if (step === 1 && !form.full_name.trim()) setError('Please enter your full name')
       else if (step === 1 && !form.exam_type) setError('Please select your exam type')
-      else if (stepLabels[step - 1] === 'Subjects' && form.exam_type === 'JAMB') setError('Please select exactly 3 more subjects (4 total)')
-      else if (stepLabels[step - 1] === 'Subjects') setError('Please select at least 1 more subject')
+      else if (currentStepLabel === 'Department') setError('Please choose your department')
+      else if (currentStepLabel === 'Subjects' && form.exam_type === 'JAMB') setError('Please select exactly 3 more subjects (4 total including Use of English)')
+      else if (currentStepLabel === 'Subjects') setError('Please select at least 1 more subject')
       return
     }
     if (step < totalSteps) {
@@ -240,6 +238,7 @@ const getAvailableSubjects = (): string[] => {
   }
 
   const handleSubmit = async () => {
+    if (!user) return
     setLoading(true)
     setError('')
 
@@ -251,7 +250,7 @@ const getAvailableSubjects = (): string[] => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              user_id: user?.id,
+              referee_user_id: user.id,
               referral_code: form.referral_code.trim(),
             }),
           })
@@ -263,7 +262,7 @@ const getAvailableSubjects = (): string[] => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: user?.id,
+          user_id: user.id,
           full_name: form.full_name.trim(),
           exam_type: form.exam_type,
           department: form.department || null,
@@ -276,8 +275,12 @@ const getAvailableSubjects = (): string[] => {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Onboarding failed')
 
-      // Show AI welcome message
-      setAiMessage(data.ai_message ?? data.message ?? "Welcome to ExamForge! Your study journey starts now. Let's get you ready for your exam.")
+      setAiMessage(
+        data.recommendation ??
+        data.ai_message ??
+        data.message ??
+        "Welcome to ExamForge! Your study journey starts now. Let's get you ready for your exam."
+      )
       setShowWelcome(true)
 
       // Auto-redirect after 5 seconds
@@ -285,6 +288,7 @@ const getAvailableSubjects = (): string[] => {
         setRedirecting(true)
         setTimeout(() => router.push('/dashboard'), 800)
       }, 5000)
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
@@ -306,7 +310,7 @@ const getAvailableSubjects = (): string[] => {
         fontFamily: 'system-ui, sans-serif',
       }}>
         <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
-          {/* Animated icon */}
+
           <div style={{
             width: 72,
             height: 72,
@@ -317,7 +321,6 @@ const getAvailableSubjects = (): string[] => {
             justifyContent: 'center',
             margin: '0 auto 24px',
             color: '#1d4ed8',
-            animation: 'popIn 0.4s ease',
           }}>
             <Icons.Sparkle />
           </div>
@@ -328,7 +331,6 @@ const getAvailableSubjects = (): string[] => {
             fontWeight: 700,
             color: '#0f172a',
             margin: '0 0 8px',
-            letterSpacing: '-0.3px',
           }}>
             Welcome, {form.full_name.split(' ')[0]}!
           </h1>
@@ -345,7 +347,6 @@ const getAvailableSubjects = (): string[] => {
             textAlign: 'left',
             marginBottom: 28,
             boxShadow: '0 2px 16px rgba(15,23,42,0.06)',
-            position: 'relative',
           }}>
             <div style={{
               display: 'flex',
@@ -385,15 +386,9 @@ const getAvailableSubjects = (): string[] => {
             </p>
           </div>
 
-          {/* Progress bar for auto-redirect */}
+          {/* Progress bar */}
           <div style={{ marginBottom: 20 }}>
-            <div style={{
-              width: '100%',
-              height: 3,
-              background: '#e2e8f0',
-              borderRadius: 2,
-              overflow: 'hidden',
-            }}>
+            <div style={{ width: '100%', height: 3, background: '#e2e8f0', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 background: '#1d4ed8',
@@ -402,7 +397,7 @@ const getAvailableSubjects = (): string[] => {
               }} />
             </div>
             <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
-              {redirecting ? 'Taking you to your dashboard...' : 'Redirecting to your dashboard in 5 seconds'}
+              {redirecting ? 'Taking you to your dashboard...' : 'Redirecting in 5 seconds'}
             </p>
           </div>
 
@@ -429,10 +424,6 @@ const getAvailableSubjects = (): string[] => {
         </div>
 
         <style>{`
-          @keyframes popIn {
-            from { transform: scale(0.6); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
-          }
           @keyframes progress {
             from { width: 0%; }
             to { width: 100%; }
@@ -443,9 +434,6 @@ const getAvailableSubjects = (): string[] => {
   }
 
   // ── Form steps ──────────────────────────────────────────────────────────────
-
-  const currentStepLabel = stepLabels[step - 1]
-  const availableSubjects = getAvailableSubjects()
 
   return (
     <div style={{
@@ -458,6 +446,7 @@ const getAvailableSubjects = (): string[] => {
       fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{ width: '100%', maxWidth: 520 }}>
+
         {/* Logo */}
         <div style={{
           fontFamily: 'Georgia, serif',
@@ -492,13 +481,14 @@ const getAvailableSubjects = (): string[] => {
               color: '#dc2626',
               fontSize: 13,
               marginBottom: 20,
+              fontFamily: 'system-ui, sans-serif',
             }}>
               {error}
             </div>
           )}
 
           {/* ── STEP 1: Profile ── */}
-          {step === 1 && (
+          {currentStepLabel === 'Profile' && (
             <div>
               <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
                 Tell us about yourself
@@ -556,13 +546,29 @@ const getAvailableSubjects = (): string[] => {
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>{exam}</div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
+                          {exam}
+                        </div>
                         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontFamily: 'system-ui, sans-serif' }}>
-                          {exam === 'JAMB' ? 'Joint Admissions and Matriculation Board' : exam === 'WAEC' ? 'West African Examinations Council' : 'National Examinations Council'}
+                          {exam === 'JAMB'
+                            ? 'Joint Admissions and Matriculation Board'
+                            : exam === 'WAEC'
+                            ? 'West African Examinations Council'
+                            : 'National Examinations Council'}
                         </div>
                       </div>
                       {form.exam_type === exam && (
-                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+                        <div style={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          background: '#1d4ed8',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#ffffff',
+                          flexShrink: 0,
+                        }}>
                           <Icons.Check />
                         </div>
                       )}
@@ -573,8 +579,8 @@ const getAvailableSubjects = (): string[] => {
             </div>
           )}
 
-          {/* ── STEP 2: Department (JAMB only) ── */}
-          {step === 2 && form.exam_type === 'JAMB' && currentStepLabel === 'Department' && (
+          {/* ── STEP: Department (JAMB only) ── */}
+          {currentStepLabel === 'Department' && (
             <div>
               <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
                 Choose your department
@@ -601,13 +607,25 @@ const getAvailableSubjects = (): string[] => {
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>{dept}</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
+                        {dept}
+                      </div>
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontFamily: 'system-ui, sans-serif' }}>
                         {JAMB_DEPARTMENTS[dept]?.slice(0, 3).join(', ')}...
                       </div>
                     </div>
                     {form.department === dept && (
-                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+                      <div style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: '#1d4ed8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        flexShrink: 0,
+                      }}>
                         <Icons.Check />
                       </div>
                     )}
@@ -633,101 +651,76 @@ const getAvailableSubjects = (): string[] => {
                 {form.exam_type === 'JAMB' ? ' / 4 required' : ' / 11 maximum'}
               </p>
 
-              {form.exam_type === 'JAMB' ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {/* Locked subject */}
-                  <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Icons.Check /> Use of English
-                  </div>
-                  {availableSubjects.map((subject) => {
-                    const isSelected = form.subjects.includes(subject)
-                    return (
-                      <button
-                        key={subject}
-                        onClick={() => toggleSubject(subject)}
-                        style={{
-                          padding: '8px 14px',
-                          borderRadius: 8,
-                          border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.12)'}`,
-                          background: isSelected ? '#f0f4ff' : '#ffffff',
-                          color: isSelected ? '#1d4ed8' : '#475569',
-                          fontSize: 13,
-                          fontWeight: isSelected ? 600 : 400,
-                          fontFamily: 'system-ui, sans-serif',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
+              {/* Locked subject pill */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  background: '#0f172a',
+                  color: '#ffffff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  fontFamily: 'system-ui, sans-serif',
+                }}>
+                  <Icons.Check />
+                  {form.exam_type === 'JAMB' ? 'Use of English' : 'English Language'}
+                  <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 4 }}>Locked</span>
+                </div>
+              </div>
+
+              {/* Subject list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {availableSubjects.map((subject) => {
+                  const isSelected = form.subjects.includes(subject)
+                  return (
+                    <button
+                      key={subject}
+                      onClick={() => toggleSubject(subject)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 14px',
+                        border: `2px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.1)'}`,
+                        borderRadius: 8,
+                        background: isSelected ? '#f0f4ff' : '#ffffff',
+                        cursor: 'pointer',
+                        width: '100%',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 4,
+                        border: `2px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.2)'}`,
+                        background: isSelected ? '#1d4ed8' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        color: '#ffffff',
+                      }}>
                         {isSelected && <Icons.Check />}
+                      </div>
+                      <span style={{
+                        fontSize: 14,
+                        color: isSelected ? '#0f172a' : '#475569',
+                        fontWeight: isSelected ? 600 : 400,
+                        fontFamily: 'system-ui, sans-serif',
+                      }}>
                         {subject}
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                // WAEC/NECO — grouped by category
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  {/* Locked subject */}
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Compulsory</div>
-                    <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <Icons.Check /> English Language
-                    </div>
-                  </div>
-
-                  {availableSubjects.map((subject) => {
-  const isLocked =
-    (form.exam_type === 'JAMB' && subject === 'Use of English') ||
-    ((form.exam_type === 'WAEC' || form.exam_type === 'NECO') && subject === 'English Language')
-  const isSelected = form.subjects.includes(subject)
-
-  return (
-    <button
-      key={subject}
-      onClick={() => toggleSubject(subject)}
-      disabled={isLocked}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '10px 14px',
-        border: `2px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.1)'}`,
-        borderRadius: 8,
-        background: isSelected ? '#f0f4ff' : '#ffffff',
-        cursor: isLocked ? 'default' : 'pointer',
-        width: '100%',
-        textAlign: 'left',
-      }}
-    >
-      <div style={{
-        width: 18,
-        height: 18,
-        borderRadius: 4,
-        border: `2px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.2)'}`,
-        background: isSelected ? '#1d4ed8' : 'transparent',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-        color: '#ffffff',
-      }}>
-        {isSelected && <Icons.Check />}
-      </div>
-      <span style={{ fontSize: 14, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
-        {subject}
-      </span>
-      {isLocked && (
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>Locked</span>
-      )}
-    </button>
-    )
-    })}
-                </div>
-              )}
-                  
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ── STEP: Target Score (JAMB only) ── */}
           {currentStepLabel === 'Target Score' && (
@@ -761,7 +754,6 @@ const getAvailableSubjects = (): string[] => {
                 <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>400</span>
               </div>
 
-              {/* Score context */}
               <div style={{ marginTop: 24, padding: '14px 16px', borderRadius: 10, background: '#f0f4ff', border: '1px solid #c7d2fe' }}>
                 <p style={{ fontSize: 13, color: '#1d4ed8', margin: 0, fontFamily: 'system-ui, sans-serif', lineHeight: 1.6 }}>
                   {form.target_score >= 300
@@ -790,7 +782,7 @@ const getAvailableSubjects = (): string[] => {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. JOHN2024"
+                  placeholder="e.g. ABCD1234"
                   value={form.referral_code}
                   onChange={(e) => setForm((f) => ({ ...f, referral_code: e.target.value.toUpperCase() }))}
                   style={{
@@ -808,22 +800,36 @@ const getAvailableSubjects = (): string[] => {
                   }}
                 />
                 <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', fontFamily: 'system-ui, sans-serif' }}>
-                  Leave blank if you don&apos;t have one — you can skip this step.
+                  Leave blank if you don&apos;t have one.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Navigation buttons */}
+          {/* ── Navigation buttons ── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28, gap: 12 }}>
             {step > 1 ? (
               <button
                 onClick={() => { setError(''); setStep((s) => s - 1) }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, background: '#ffffff', color: '#475569', fontSize: 14, fontFamily: 'system-ui, sans-serif', cursor: 'pointer' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '10px 18px',
+                  border: '1px solid rgba(15,23,42,0.12)',
+                  borderRadius: 8,
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: 14,
+                  fontFamily: 'system-ui, sans-serif',
+                  cursor: 'pointer',
+                }}
               >
                 <Icons.ArrowLeft /> Back
               </button>
-            ) : <div />}
+            ) : (
+              <div />
+            )}
 
             <button
               onClick={handleNext}
@@ -846,18 +852,23 @@ const getAvailableSubjects = (): string[] => {
                 marginLeft: 'auto',
               }}
             >
-              {loading ? 'Setting up your account...' : step === totalSteps ? 'Complete Setup' : 'Continue'}
+              {loading
+                ? 'Setting up your account...'
+                : step === totalSteps
+                ? 'Complete Setup'
+                : 'Continue'}
               {!loading && <Icons.ArrowRight />}
             </button>
           </div>
+
         </div>
 
-        {/* Step progress text */}
+        {/* Step counter */}
         <p style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8', marginTop: 16, fontFamily: 'system-ui, sans-serif' }}>
           Step {step} of {totalSteps}
         </p>
+
       </div>
     </div>
   )
                       }
-           
