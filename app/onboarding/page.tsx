@@ -723,15 +723,11 @@ const getAvailableSubjects = (): string[] => {
         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>Locked</span>
       )}
     </button>
-  )
-})}
-                      </div>
-                    </div>
-                  ))}
+    )
+    })}
                 </div>
               )}
-            </div>
-          )}
+                  
 
           {/* ── STEP: Target Score (JAMB only) ── */}
           {currentStepLabel === 'Target Score' && (
