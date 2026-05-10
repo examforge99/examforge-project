@@ -28,11 +28,11 @@ export async function POST(request: Request) {
 
     // Step 2: Log to error_logs so admin sees it in review queue
     await supabaseAdmin.from('error_logs').insert({
-      error_code: 'FLAGGED_ANSWER',
-      message: `Student flagged explanation as incorrect. Reason: ${reason || 'Not specified'}`,
-      user_id,
-      metadata: { question_id, reason: reason || null }
-    })
+  error_code: 'FLAGGED_ANSWER',
+  message: `Student flagged explanation as incorrect. Reason: ${reason || 'Not specified'}`,
+  clerk_user_id: user_id,
+  metadata: { question_id, reason: reason || null }
+})
 
     // Step 3: Get question details for fresh generation
     const { data: question } = await supabaseAdmin
