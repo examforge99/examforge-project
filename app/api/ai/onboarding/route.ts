@@ -23,26 +23,35 @@ export async function POST(request: Request) {
       weak_subjects,
     } = body
 
-    if (!user_id || !full_name || !exam_type || !department) {
+    // department and target_score only required for JAMB
+    if (!user_id || !full_name || !exam_type) {
       return Response.json(
-        { error: 'user_id, full_name, exam_type, and department are required' },
+        { error: 'user_id, full_name, and exam_type are required' },
+        { status: 400 }
+      )
+    }
+
+    if (exam_type === 'JAMB' && !department) {
+      return Response.json(
+        { error: 'department is required for JAMB' },
         { status: 400 }
       )
     }
 
     // 1. Save student profile to users table
+    // Use clerk_user_id not id — Clerk IDs are not UUIDs
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({
         full_name,
         exam_type,
-        department,
-        target_score:   target_score   ?? null,
-        weak_subjects:  Array.isArray(weak_subjects) ? weak_subjects : [],
+        department:    exam_type === 'JAMB' ? department : null,
+        target_score:  exam_type === 'JAMB' ? (target_score ?? null) : null,
+        weak_subjects: Array.isArray(weak_subjects) ? weak_subjects : [],
         onboarding_completed: true,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user_id)
+      .eq('clerk_user_id', user_id)
 
     if (updateError) {
       return Response.json({ error: updateError.message }, { status: 500 })
@@ -69,6 +78,8 @@ export async function POST(request: Request) {
       ? weak_subjects.join(', ')
       : 'not specified yet'
 
+    const isJAMB = exam_type === 'JAMB'
+
     // 3. Generate personalized AI welcome message
     const systemPrompt = `You are an experienced JAMB, WAEC and NECO exam coach on ExamForge, a Nigerian exam preparation platform.
 This is a student's very first interaction with ExamForge.
@@ -80,14 +91,14 @@ English only. No markdown. No bullet points. Just natural flowing sentences.`
 
 Name: ${full_name}
 Exam: ${exam_type}
-Department: ${department}
-Target score: ${target_score ? target_score : 'not set'}
+${isJAMB ? `Department: ${department}` : ''}
+${isJAMB && target_score ? `Target score: ${target_score}` : ''}
 Weak subjects: ${subjectList}
 ${daysUntilExam ? `Days until ${exam_type}: ${daysUntilExam} days` : ''}
 
 Write a personalized welcome message that:
 1. Greets them by first name warmly
-2. Acknowledges their exam (${exam_type}) and department (${department})
+2. Acknowledges their exam (${exam_type})${isJAMB ? ` and department (${department})` : ''}
 3. If they have weak subjects, give one sharp specific tip for the first one
 4. If exam date is known, reference how much time they have and make it feel manageable
 5. End with one strong motivating line that makes them want to start practicing immediately
