@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const { data: userData } = await supabaseAdmin
       .from('users')
       .select('last_active_at')
-      .eq('id', userId)
+      .eq('clerk_user_id', userId)
       .single()
 
     if (userData?.last_active_at) {
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     await supabaseAdmin
       .from('users')
       .update({ last_active_at: new Date().toISOString() })
-      .eq('id', userId)
+      .eq('clerk_user_id', userId)
 
     // Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
