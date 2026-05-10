@@ -125,8 +125,8 @@ export async function POST(request: Request) {
       const { error: subError } = await supabaseAdmin
         .from('subscriptions')
         .insert({
-          user_id:          supabaseUserId,  // UUID — correct
-          plan_name:        'demo',
+         clerk_user_id:    id,  // Clerk ID — matches subscriptions table schema
+         plan_name:        'demo',
           start_date:       now.toISOString(),
           expiry_date:      expiryDate.toISOString(),
           grace_period_end: expiryDate.toISOString(),
