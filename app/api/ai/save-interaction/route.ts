@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const { count } = await supabaseAdmin
       .from('ai_interactions')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', user_id)
+      .eq('clerk_user_id', user_id)
 
     const triggerSummaryUpdate = count !== null && count > 0 && count % 5 === 0
 
