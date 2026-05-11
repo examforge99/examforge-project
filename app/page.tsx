@@ -25,12 +25,12 @@ export default function HomePage() {
           <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '-0.02em', color: '#0f172a' }}>ExamForge</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Link href="/SignIn" style={{
+          <Link href="/login" style={{
             color: '#475569', textDecoration: 'none', fontSize: '14px',
             fontFamily: 'system-ui, sans-serif', fontWeight: 500,
             padding: '8px 16px', borderRadius: '8px',
           }}>Login</Link>
-          <Link href="/Signup" style={{
+          <Link href="/signup" style={{
             background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
             color: 'white', textDecoration: 'none', fontSize: '14px',
             fontFamily: 'system-ui, sans-serif', fontWeight: 600,
@@ -333,7 +333,7 @@ export default function HomePage() {
           }}>
             Every day you wait is a day your competition is preparing. Start now — it is free to begin.
           </p>
-          <Link href="/Signup" style={{
+          <Link href="/signup" style={{
             display: 'inline-block',
             background: '#ffffff',
             color: '#1d4ed8', textDecoration: 'none',
