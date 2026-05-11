@@ -229,25 +229,3 @@ export default function LoginPage() {
     </div>
   )
                        }
-const [oauthLoading, setOauthLoading] = useState(false)
-{oauthLoading && (
-  <div style={{
-    textAlign: 'center',
-    padding: '20px',
-    color: '#64748b',
-    fontSize: 14,
-    fontFamily: 'system-ui, sans-serif',
-  }}>
-    <div style={{
-      width: 24,
-      height: 24,
-      border: '2px solid #e2e8f0',
-      borderTop: '2px solid #1d4ed8',
-      borderRadius: '50%',
-      animation: 'spin 1s linear infinite',
-      margin: '0 auto 12px',
-    }} />
-    Connecting to Google...
-  </div>
-)}
-          
