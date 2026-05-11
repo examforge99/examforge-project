@@ -558,4 +558,298 @@ export default function OnboardingPage() {
                         textAlign: 'left',
                       }}
                     >
-                      <
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>{exam}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontFamily: 'system-ui, sans-serif' }}>
+                          {exam === 'JAMB' ? 'Joint Admissions and Matriculation Board' : exam === 'WAEC' ? 'West African Examinations Council' : 'National Examinations Council'}
+                        </div>
+                      </div>
+                      {form.exam_type === exam && (
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+                          <Icons.Check />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 2: Department (JAMB only) ── */}
+          {step === 2 && form.exam_type === 'JAMB' && currentStepLabel === 'Department' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Choose your department
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 24px', lineHeight: 1.6 }}>
+                This determines the subjects available for your JAMB combination
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(['Science', 'Commercial', 'Arts'] as Department[]).map((dept) => (
+                  <button
+                    key={dept}
+                    onClick={() => handleDepartmentChange(dept)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '14px 16px',
+                      border: `2px solid ${form.department === dept ? '#1d4ed8' : 'rgba(15,23,42,0.1)'}`,
+                      borderRadius: 10,
+                      background: form.department === dept ? '#f0f4ff' : '#ffffff',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>{dept}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontFamily: 'system-ui, sans-serif' }}>
+                        {JAMB_DEPARTMENTS[dept]?.slice(0, 3).join(', ')}...
+                      </div>
+                    </div>
+                    {form.department === dept && (
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+                        <Icons.Check />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP: Subjects ── */}
+          {currentStepLabel === 'Subjects' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Select your subjects
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 6px', lineHeight: 1.6 }}>
+                {form.exam_type === 'JAMB'
+                  ? 'Use of English is compulsory. Pick 3 more from your department.'
+                  : 'English Language is compulsory. Pick up to 10 more subjects.'}
+              </p>
+              <p style={{ fontSize: 13, color: '#1d4ed8', fontWeight: 600, margin: '0 0 20px' }}>
+                {form.subjects.length} selected
+                {form.exam_type === 'JAMB' ? ' / 4 required' : ' / 11 maximum'}
+              </p>
+
+              {form.exam_type === 'JAMB' ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {/* Locked subject */}
+                  <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icons.Check /> Use of English
+                  </div>
+                  {availableSubjects.map((subject) => {
+                    const isSelected = form.subjects.includes(subject)
+                    return (
+                      <button
+                        key={subject}
+                        onClick={() => toggleSubject(subject)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: 8,
+                          border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.12)'}`,
+                          background: isSelected ? '#f0f4ff' : '#ffffff',
+                          color: isSelected ? '#1d4ed8' : '#475569',
+                          fontSize: 13,
+                          fontWeight: isSelected ? 600 : 400,
+                          fontFamily: 'system-ui, sans-serif',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                      >
+                        {isSelected && <Icons.Check />}
+                        {subject}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                // WAEC/NECO — grouped by category
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  {/* Locked subject */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Compulsory</div>
+                    <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Icons.Check /> English Language
+                    </div>
+                  </div>
+
+                  {(availableSubjects as [string, string[]][]).map(([group, subjects]) => (
+                    <div key={group}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{group}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {subjects.map((subject) => {
+                          const isSelected = form.subjects.includes(subject)
+                          const maxReached = form.subjects.length >= 11
+                          return (
+                            <button
+                              key={subject}
+                              onClick={() => toggleSubject(subject)}
+                              disabled={!isSelected && maxReached}
+                              style={{
+                                padding: '7px 12px',
+                                borderRadius: 8,
+                                border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.12)'}`,
+                                background: isSelected ? '#f0f4ff' : (!isSelected && maxReached) ? '#fafaf9' : '#ffffff',
+                                color: isSelected ? '#1d4ed8' : (!isSelected && maxReached) ? '#94a3b8' : '#475569',
+                                fontSize: 13,
+                                fontWeight: isSelected ? 600 : 400,
+                                fontFamily: 'system-ui, sans-serif',
+                                cursor: (!isSelected && maxReached) ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                              }}
+                            >
+                              {isSelected && <Icons.Check />}
+                              {subject}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP: Target Score (JAMB only) ── */}
+          {currentStepLabel === 'Target Score' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                What is your target score?
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 28px', lineHeight: 1.6 }}>
+                JAMB scores range from 100–400. Your AI coach will tailor sessions to help you hit your goal.
+              </p>
+
+              <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 56, fontWeight: 700, color: '#1d4ed8', lineHeight: 1 }}>
+                  {form.target_score}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>out of 400</div>
+              </div>
+
+              <input
+                type="range"
+                min={100}
+                max={400}
+                step={5}
+                value={form.target_score}
+                onChange={(e) => setForm((f) => ({ ...f, target_score: parseInt(e.target.value) }))}
+                style={{ width: '100%', accentColor: '#1d4ed8', cursor: 'pointer' }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>100</span>
+                <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>400</span>
+              </div>
+
+              {/* Score context */}
+              <div style={{ marginTop: 24, padding: '14px 16px', borderRadius: 10, background: '#f0f4ff', border: '1px solid #c7d2fe' }}>
+                <p style={{ fontSize: 13, color: '#1d4ed8', margin: 0, fontFamily: 'system-ui, sans-serif', lineHeight: 1.6 }}>
+                  {form.target_score >= 300
+                    ? 'Ambitious target. Your AI coach will push you hard to reach this.'
+                    : form.target_score >= 220
+                    ? 'Great target for most courses. Consistent practice will get you there.'
+                    : 'A solid starting point. Build your foundation and aim higher as you improve.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP: Referral Code ── */}
+          {currentStepLabel === 'Referral' && (
+            <div>
+              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '0 0 6px' }}>
+                Do you have a referral code?
+              </h2>
+              <p style={{ fontSize: 14, color: '#64748b', margin: '0 0 28px', lineHeight: 1.6 }}>
+                If a friend referred you, enter their code to give them a reward. This step is optional.
+              </p>
+
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+                  Referral Code (optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. JOHN2024"
+                  value={form.referral_code}
+                  onChange={(e) => setForm((f) => ({ ...f, referral_code: e.target.value.toUpperCase() }))}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '1px solid rgba(15,23,42,0.12)',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    color: '#0f172a',
+                    background: '#faf9f7',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.05em',
+                  }}
+                />
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', fontFamily: 'system-ui, sans-serif' }}>
+                  Leave blank if you don&apos;t have one — you can skip this step.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Navigation buttons */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28, gap: 12 }}>
+            {step > 1 ? (
+              <button
+                onClick={() => { setError(''); setStep((s) => s - 1) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, background: '#ffffff', color: '#475569', fontSize: 14, fontFamily: 'system-ui, sans-serif', cursor: 'pointer' }}
+              >
+                <Icons.ArrowLeft /> Back
+              </button>
+            ) : <div />}
+
+            <button
+              onClick={handleNext}
+              disabled={loading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 24px',
+                border: 'none',
+                borderRadius: 8,
+                background: '#1d4ed8',
+                color: '#ffffff',
+                fontSize: 14,
+                fontFamily: 'system-ui, sans-serif',
+                fontWeight: 600,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+                transition: 'all 0.15s ease',
+                marginLeft: 'auto',
+              }}
+            >
+              {loading ? 'Setting up your account...' : step === totalSteps ? 'Complete Setup' : 'Continue'}
+              {!loading && <Icons.ArrowRight />}
+            </button>
+          </div>
+        </div>
+
+        {/* Step progress text */}
+        <p style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8', marginTop: 16, fontFamily: 'system-ui, sans-serif' }}>
+          Step {step} of {totalSteps}
+        </p>
+      </div>
+    </div>
+  )
+              }
