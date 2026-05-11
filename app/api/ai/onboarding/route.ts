@@ -1,6 +1,6 @@
 // app/api/ai/onboarding/route.ts
 // POST /api/ai/onboarding
-// Body: { user_id, full_name, exam_type, department, target_score, weak_subjects }
+// Body: { user_id, full_name, exam_type, department, target_score, weak_subjects, subjects }
 //
 // 1. Saves student profile to users table
 // 2. Pulls exam date automatically from exam_calendar table
@@ -21,9 +21,9 @@ export async function POST(request: Request) {
       department,
       target_score,
       weak_subjects,
+      subjects,
     } = body
 
-    // department and target_score only required for JAMB
     if (!user_id || !full_name || !exam_type) {
       return Response.json(
         { error: 'user_id, full_name, and exam_type are required' },
@@ -39,17 +39,16 @@ export async function POST(request: Request) {
     }
 
     // 1. Save student profile to users table
-    // Use clerk_user_id not id — Clerk IDs are not UUIDs
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({
         full_name,
         exam_type,
-        department:    exam_type === 'JAMB' ? department : null,
-        target_score:  exam_type === 'JAMB' ? (target_score ?? null) : null,
-        weak_subjects: Array.isArray(weak_subjects) ? weak_subjects : [],
+        department:           exam_type === 'JAMB' ? department : null,
+        target_score:         exam_type === 'JAMB' ? (target_score ?? null) : null,
+        weak_subjects:        Array.isArray(weak_subjects) ? weak_subjects : [],
         onboarding_completed: true,
-        updated_at: new Date().toISOString(),
+        updated_at:           new Date().toISOString(),
       })
       .eq('clerk_user_id', user_id)
 
@@ -57,7 +56,7 @@ export async function POST(request: Request) {
       return Response.json({ error: updateError.message }, { status: 500 })
     }
 
-    // 2. Pull exam date from exam_calendar table
+    // 2. Pull next upcoming exam date from exam_calendar
     const { data: examEvent } = await supabaseAdmin
       .from('exam_calendar')
       .select('exam_name, exam_date, description')
@@ -74,47 +73,65 @@ export async function POST(request: Request) {
         )
       : null
 
-    const subjectList = Array.isArray(weak_subjects) && weak_subjects.length > 0
-      ? weak_subjects.join(', ')
+    const isJAMB = exam_type === 'JAMB'
+    const firstName = full_name.split(' ')[0]
+    const subjectList = Array.isArray(subjects) && subjects.length > 0
+      ? subjects.join(', ')
       : 'not specified yet'
 
-    const isJAMB = exam_type === 'JAMB'
-
     // 3. Generate personalized AI welcome message
-    const systemPrompt = `You are an experienced JAMB, WAEC and NECO exam coach on ExamForge, a Nigerian exam preparation platform.
-This is a student's very first interaction with ExamForge.
-Be warm, encouraging, and specific to their situation.
-Sound like a coach who has helped hundreds of Nigerian students pass their exams.
-English only. No markdown. No bullet points. Just natural flowing sentences.`
+    // ExamForge identity is embedded here — Gemini knows what this platform is and stands for
 
-    const userPrompt = `A new student just completed their ExamForge setup. Here is their profile:
+    const systemPrompt = `You are the ExamForge AI Coach — a personal, humane, and direct academic coach built for Nigerian students preparing for JAMB, WAEC, and NECO.
 
-Name: ${full_name}
+ExamForge was built on one belief: students study blindly because no one showed them how effort converts to outcomes. Every subject is a language — if a student does not understand the foundational vocabulary of a subject, nothing built on top of it will hold. Your job is to make learning purposeful, visible, and specific.
+
+You are writing a welcome message to a brand new student who just finished setting up their profile. This is their first contact with you. Make it count.
+
+Your personality:
+- Warm but direct — not generic, not robotic
+- You speak in proper English only — no Pidgin, no code-switching
+- You are Nigerian in awareness — you understand the weight of these exams in a Nigerian student's life
+- You never overpromise — you are honest that results come from consistent work, not from joining a platform
+- You make the invisible visible — connect their setup today to what it means for their score tomorrow
+
+Output rules:
+- Write 4 to 6 sentences
+- No bullet points, no markdown, no headers
+- Natural, flowing sentences — like a coach speaking directly to a student
+- Reference their specific details — name, exam, subjects, department, target score, days until exam
+- End with one line that makes them want to open the practice section immediately`
+
+    const userPrompt = `Write a welcome message for this new ExamForge student:
+
+Name: ${firstName}
+Full name: ${full_name}
 Exam: ${exam_type}
 ${isJAMB ? `Department: ${department}` : ''}
-${isJAMB && target_score ? `Target score: ${target_score}` : ''}
-Weak subjects: ${subjectList}
-${daysUntilExam ? `Days until ${exam_type}: ${daysUntilExam} days` : ''}
+Subjects: ${subjectList}
+${isJAMB && target_score ? `Target score: ${target_score} out of 400` : ''}
+${daysUntilExam ? `Days until ${exam_type} exam: ${daysUntilExam} days` : 'Exam date not yet confirmed'}
 
-Write a personalized welcome message that:
-1. Greets them by first name warmly
-2. Acknowledges their exam (${exam_type})${isJAMB ? ` and department (${department})` : ''}
-3. If they have weak subjects, give one sharp specific tip for the first one
-4. If exam date is known, reference how much time they have and make it feel manageable
-5. End with one strong motivating line that makes them want to start practicing immediately
+The message must:
+1. Address them by first name (${firstName}) — not "Ah" or "Hey" — just their name naturally in the first sentence
+2. Acknowledge their exam and what it means — the stakes are real for a Nigerian student
+3. If they have subjects listed, reference them specifically — this is not a generic platform
+4. ${daysUntilExam ? `Reference the ${daysUntilExam} days they have and make it feel like a real timeline, not a countdown to fear` : 'Acknowledge that setting their exam date will help us build a precise study plan'}
+5. ${isJAMB && target_score ? `Reference their target of ${target_score} — acknowledge it specifically, whether ambitious or reasonable` : ''}
+6. End with one sentence that is motivating without being empty — connect action to outcome
 
-Maximum 4 sentences. No bullet points. Sound human and Nigerian-aware.`
+Do not start with "Ah". Do not use exclamation marks more than once. Sound like a coach, not a bot.`
 
-    const recommendation = await callGemini(systemPrompt, userPrompt, 0.7, 300)
+    const ai_message = await callGemini(systemPrompt, userPrompt, 0.75, 600)
 
     // 4. Save AI interaction
-    await saveInteraction(user_id, 'onboarding', recommendation)
+    await saveInteraction(user_id, 'onboarding', ai_message)
 
     return Response.json({
-      success: true,
-      recommendation,
-      exam_info: examEvent ?? null,
-      days_until_exam: daysUntilExam ?? null,
+      success:          true,
+      ai_message,                    // ← correct key — onboarding page reads data.ai_message
+      exam_info:        examEvent ?? null,
+      days_until_exam:  daysUntilExam ?? null,
     })
 
   } catch (err: any) {
