@@ -173,14 +173,13 @@ export default function OnboardingPage() {
   const totalSteps = stepLabels.length
 
   // Available subjects based on exam type and department
-  const getAvailableSubjects = () => {
-    if (form.exam_type === 'JAMB' && form.department) {
-      return JAMB_DEPARTMENTS[form.department] ?? []
-    }
-    if (form.exam_type === 'WAEC' || form.exam_type === 'NECO') {
-      return Object.entries(WAEC_NECO_SUBJECTS)
-    }
+  const getJambSubjects = (): string[] => {
+    if (form.department) return JAMB_DEPARTMENTS[form.department] ?? []
     return []
+  }
+
+  const getWaecNecoGroups = (): [string, string[]][] => {
+    return Object.entries(WAEC_NECO_SUBJECTS) as [string, string[]][]
   }
 
   const toggleSubject = (subject: string) => {
@@ -448,7 +447,8 @@ export default function OnboardingPage() {
   // ── Form steps ──────────────────────────────────────────────────────────────
 
   const currentStepLabel = stepLabels[step - 1]
-  const availableSubjects = getAvailableSubjects()
+  const jambSubjects = getJambSubjects()
+  const waecNecoGroups = getWaecNecoGroups()
 
   return (
     <div style={{
@@ -642,7 +642,7 @@ export default function OnboardingPage() {
                   <div style={{ padding: '8px 14px', borderRadius: 8, background: '#0f172a', color: '#ffffff', fontSize: 13, fontWeight: 600, fontFamily: 'system-ui, sans-serif', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Icons.Check /> Use of English
                   </div>
-                  {availableSubjects.map((subject) => {
+                  {jambSubjects.map((subject) => {
                     const isSelected = form.subjects.includes(subject)
                     return (
                       <button
@@ -681,7 +681,7 @@ export default function OnboardingPage() {
                     </div>
                   </div>
 
-                  {(availableSubjects as [string, string[]][]).map(([group, subjects]) => (
+                  {waecNecoGroups.map(([group, subjects]) => (
                     <div key={group}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{group}</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -852,4 +852,5 @@ export default function OnboardingPage() {
       </div>
     </div>
   )
-              }
+                                                                  }
+             
