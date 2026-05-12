@@ -4,8 +4,6 @@ import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
-export const dynamic = 'force-dynamic'
-
 // ─── Admin Auth Guard ─────────────────────────────────────────────────────────
 
 async function verifyAdmin(userId: string): Promise<boolean> {
