@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
-import { auth } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
 
 // GET /api/student/context?user_id=xxx
 // Returns full student academic profile for dashboard + AI personalization
