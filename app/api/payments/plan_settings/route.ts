@@ -29,6 +29,29 @@ const ALL_SETTING_KEYS = [
   'plan_12_months_enabled',
 ] as const
 
+// ── Helper — log to error_logs table directly (no RPC) ───────────────────────
+
+async function logError(
+  error_code: string,
+  message: string,
+  stack_trace?: string | null,
+  clerk_user_id?: string | null,
+  metadata?: Record<string, unknown> | null
+) {
+  await supabaseAdmin
+    .from('error_logs')
+    .insert({
+      error_code,
+      message,
+      stack_trace: stack_trace ?? null,
+      clerk_user_id: clerk_user_id ?? null,
+      metadata: metadata ?? null,
+    })
+    .catch(() => {}) // never throw from logging
+}
+
+// ── Route ────────────────────────────────────────────────────────────────────
+
 export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
@@ -37,13 +60,13 @@ export async function GET() {
       .in('setting_name', [...ALL_SETTING_KEYS])
 
     if (error) {
-      await supabaseAdmin.rpc('log_error', {
-        p_error_code: 'PLAN_SETTINGS_FETCH_ERROR',
-        p_message: error.message,
-        p_user_id: null,
-        p_metadata: null,
-      }).catch(() => {})
-
+      await logError(
+        'PLAN_SETTINGS_FETCH_ERROR',
+        error.message,
+        null,
+        null,
+        { hint: error.hint ?? null }
+      )
       return Response.json(
         { error: 'Could not load plan settings. Please try again.' },
         { status: 500 }
@@ -59,13 +82,13 @@ export async function GET() {
     // D6 — Validate all required prices exist before returning anything
     const missingKeys = REQUIRED_PRICE_KEYS.filter(key => !settingsMap[key])
     if (missingKeys.length > 0) {
-      await supabaseAdmin.rpc('log_error', {
-        p_error_code: 'PLAN_SETTINGS_MISSING_PRICES',
-        p_message: `Missing price keys: ${missingKeys.join(', ')}`,
-        p_user_id: null,
-        p_metadata: null,
-      }).catch(() => {})
-
+      await logError(
+        'PLAN_SETTINGS_MISSING_PRICES',
+        `Missing price keys: ${missingKeys.join(', ')}`,
+        null,
+        null,
+        { missing_keys: missingKeys }
+      )
       return Response.json(
         { error: 'Plan prices are not configured. Please contact support.' },
         { status: 500 }
@@ -78,20 +101,25 @@ export async function GET() {
     const price6Months  = parseInt(settingsMap['price_6_months'])
     const price12Months = parseInt(settingsMap['price_12_months'])
 
-    // Validate parsed values are valid numbers
+    // Validate parsed values are actual numbers
     if (
-      isNaN(price1Month) ||
-      isNaN(price3Months) ||
-      isNaN(price6Months) ||
+      isNaN(price1Month)   ||
+      isNaN(price3Months)  ||
+      isNaN(price6Months)  ||
       isNaN(price12Months)
     ) {
-      await supabaseAdmin.rpc('log_error', {
-        p_error_code: 'PLAN_SETTINGS_INVALID_PRICES',
-        p_message: 'One or more price values could not be parsed as numbers',
-        p_user_id: null,
-        p_metadata: null,
-      }).catch(() => {})
-
+      await logError(
+        'PLAN_SETTINGS_INVALID_PRICES',
+        'One or more price values could not be parsed as numbers',
+        null,
+        null,
+        {
+          price_1_month:   settingsMap['price_1_month'],
+          price_3_months:  settingsMap['price_3_months'],
+          price_6_months:  settingsMap['price_6_months'],
+          price_12_months: settingsMap['price_12_months'],
+        }
+      )
       return Response.json(
         { error: 'Plan prices are misconfigured. Please contact support.' },
         { status: 500 }
@@ -99,11 +127,11 @@ export async function GET() {
     }
 
     return Response.json({
-      payments_enabled: settingsMap['payments_enabled'] !== 'false',
-      coupons_enabled:  settingsMap['coupons_enabled']  !== 'false',
+      payments_enabled:  settingsMap['payments_enabled']  !== 'false',
+      coupons_enabled:   settingsMap['coupons_enabled']   !== 'false',
       referrals_enabled: settingsMap['referrals_enabled'] !== 'false',
 
-      // Naira amounts for display
+      // Naira amounts — for display only
       prices: {
         '1_month':   price1Month   / 100,
         '3_months':  price3Months  / 100,
@@ -111,7 +139,8 @@ export async function GET() {
         '12_months': price12Months / 100,
       },
 
-      // Raw kobo amounts — pass these to /api/payments/initialize, never the naira values
+      // Kobo amounts — pass these directly to /api/payments/initialize
+      // Never re-multiply the naira values — prevents rounding mismatch
       prices_kobo: {
         '1_month':   price1Month,
         '3_months':  price3Months,
@@ -128,17 +157,17 @@ export async function GET() {
     })
 
   } catch (err: any) {
-    await supabaseAdmin.rpc('log_error', {
-      p_error_code: 'PLAN_SETTINGS_UNHANDLED',
-      p_message: err.message,
-      p_user_id: null,
-      p_metadata: null,
-    }).catch(() => {})
-
+    await logError(
+      'PLAN_SETTINGS_UNHANDLED',
+      err.message,
+      err.stack ?? null,
+      null,
+      null
+    )
     return Response.json(
       { error: 'An unexpected error occurred. Please try again.' },
       { status: 500 }
     )
   }
         }
-    
+        
