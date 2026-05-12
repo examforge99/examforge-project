@@ -149,13 +149,16 @@ export default function PaymentsPage() {
     setError('')
     try {
       const res = await fetch(`/api/admin/payments?${buildParams()}`)
-      if (!res.ok) throw new Error('Failed to fetch payments')
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Failed to fetch payments')
+      }
       const data = await res.json()
       setPayments(data.payments)
       setSummary(data.summary)
       setPagination(data.pagination)
-    } catch {
-      setError('Could not load payments. Please try again.')
+    } catch (err: any) {
+      setError(err.message || 'Could not load payments. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -165,10 +168,14 @@ export default function PaymentsPage() {
 
   const handleExport = async () => {
     setExporting(true)
+    setError('')
     try {
       const params = buildParams({ export: 'true' })
       const res = await fetch(`/api/admin/payments?${params}`)
-      if (!res.ok) throw new Error('Export failed')
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Export failed')
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -176,15 +183,17 @@ export default function PaymentsPage() {
       a.download = `examforge-payments-${new Date().toISOString().split('T')[0]}.csv`
       a.click()
       URL.revokeObjectURL(url)
-    } catch {
-      setError('Export failed. Please try again.')
+    } catch (err: any) {
+      setError(err.message || 'Export failed. Please try again.')
     } finally {
       setExporting(false)
     }
   }
 
-  const formatNaira = (amount: number) =>
-    `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const formatNaira = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined) return '₦0.00'
+    return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
 
   const formatDate = (date: string) =>
     new Date(date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -211,9 +220,9 @@ export default function PaymentsPage() {
 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
-        <SummaryCard label="Total Revenue" value={summary ? formatNaira(summary.totalRevenueNaira) : '₦0'} icon={Icons.Revenue} accent="#1d4ed8" loading={loading} />
-        <SummaryCard label="Today's Revenue" value={summary ? formatNaira(summary.todayRevenueNaira) : '₦0'} icon={Icons.Today} accent="#16a34a" loading={loading} />
-        <SummaryCard label="Total Transactions" value={summary ? summary.totalTransactions.toLocaleString() : '0'} icon={Icons.Total} accent="#7c3aed" loading={loading} />
+        <SummaryCard label="Total Revenue" value={formatNaira(summary?.totalRevenueNaira)} icon={Icons.Revenue} accent="#1d4ed8" loading={loading} />
+        <SummaryCard label="Today's Revenue" value={formatNaira(summary?.todayRevenueNaira)} icon={Icons.Today} accent="#16a34a" loading={loading} />
+        <SummaryCard label="Total Transactions" value={summary?.totalTransactions?.toLocaleString() ?? '0'} icon={Icons.Total} accent="#7c3aed" loading={loading} />
       </div>
 
       {/* Error */}
@@ -342,10 +351,10 @@ export default function PaymentsPage() {
                   >
                     <td style={{ padding: '14px 16px' }}>
                       <div style={{ fontWeight: 500, fontSize: 14, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
-                        {payment.student.full_name ?? '—'}
+                        {payment.student?.full_name ?? '—'}
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'system-ui, sans-serif', marginTop: 2 }}>
-                        {payment.student.email ?? '—'}
+                        {payment.student?.email ?? '—'}
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 13, color: '#475569', fontFamily: 'system-ui, sans-serif', whiteSpace: 'nowrap' }}>
@@ -371,7 +380,7 @@ export default function PaymentsPage() {
             </tbody>
           </table>
         </div>
-
+        
         {/* Pagination */}
         {pagination && pagination.totalPages > 1 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderTop: '1px solid rgba(15,23,42,0.08)', flexWrap: 'wrap', gap: 10 }}>
@@ -403,5 +412,4 @@ export default function PaymentsPage() {
       `}</style>
     </div>
   )
-        }
-                       
+}
