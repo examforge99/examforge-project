@@ -4,96 +4,106 @@ import { useState, useEffect } from 'react'
 
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Record<string, any>>({})
-  const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({})
   const [activeTab, setActiveTab] = useState('General')
-  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/admin/settings')
       .then(res => res.json())
       .then(data => setSettings(data.settings))
+      .finally(() => setLoading(false))
   }, [])
 
-  // Helper logic
+  // Logic to categorize settings
   const getCategory = (key: string) => {
     if (key.endsWith('_naira')) return 'Pricing'
     if (key.includes('enabled')) return 'Subjects'
-    if (key.includes('limit') || key.includes('days')) return 'Limits'
+    if (key.includes('limit') || key.includes('days') || key.includes('threshold')) return 'Limits'
     return 'General'
   }
 
-  const updatePending = (key: string, value: any) => {
-    setPendingChanges(prev => ({ ...prev, [key]: value }))
-  }
-
-  const saveChanges = async () => {
-    setSaving(true)
-    const finalUpdates: Record<string, any> = {}
-    Object.keys(pendingChanges).forEach(k => {
-      finalUpdates[k.replace('_naira', '')] = pendingChanges[k]
-    })
-
-    const res = await fetch('/api/admin/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: finalUpdates }),
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      setSettings(prev => ({ ...prev, ...data.updated }))
-      setPendingChanges({})
-      alert('Changes deployed successfully')
-    }
-    setSaving(false)
-  }
-
+  // Filter out the raw kobo price values
   const koboKeys = ['price_1_month', 'price_3_months', 'price_6_months', 'price_12_months']
   const displayKeys = Object.keys(settings).filter(k => !koboKeys.includes(k))
 
+  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading Platform...</div>
+
   return (
-    <div style={{ padding: '40px', background: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui' }}>
+    <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '32px 0' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         
-        {/* Header Section */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-          <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: '#0f172a' }}>Platform Settings</h1>
-            <p style={{ color: '#64748b', fontSize: 14 }}>Manage your global configuration.</p>
-          </div>
-          {Object.keys(pendingChanges).length > 0 && (
-            <button onClick={saveChanges} disabled={saving} style={{ padding: '10px 24px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>
-              {saving ? 'Deploying...' : `Save ${Object.keys(pendingChanges).length} Changes`}
-            </button>
-          )}
-        </div>
+        <header style={{ marginBottom: 32, padding: '0 20px' }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#0f172a' }}>Platform Settings</h1>
+          <p style={{ color: '#64748b', fontSize: 14 }}>Configure your app, pricing, and active features.</p>
+        </header>
 
         {/* Tab Navigation */}
-        <div style={{ display: 'flex', gap: '24px', borderBottom: '2px solid #e2e8f0', marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', padding: '0 20px' }}>
           {['General', 'Pricing', 'Limits', 'Subjects'].map(cat => (
-            <button key={cat} onClick={() => setActiveTab(cat)} style={{ padding: '12px 4px', border: 'none', borderBottom: activeTab === cat ? '2px solid #0f172a' : 'none', background: 'none', cursor: 'pointer', fontWeight: activeTab === cat ? 700 : 500, color: activeTab === cat ? '#0f172a' : '#64748b' }}>
-              {cat}
-            </button>
+            <button key={cat} onClick={() => setActiveTab(cat)} 
+              style={{ 
+                padding: '8px 16px', borderRadius: '8px', cursor: 'pointer',
+                background: activeTab === cat ? '#0f172a' : 'transparent',
+                color: activeTab === cat ? '#fff' : '#475569',
+                border: activeTab === cat ? 'none' : '1px solid #e2e8f0',
+                fontWeight: 600, fontSize: 14, transition: '0.2s'
+              }}>{cat}</button>
           ))}
         </div>
 
-        {/* Grid of Settings */}
-        <div style={{ display: 'grid', gap: '12px' }}>
+        {/* Setting Cards */}
+        <div style={{ display: 'grid', gap: '12px', padding: '0 20px' }}>
           {displayKeys.filter(k => getCategory(k) === activeTab).sort().map(key => (
-            <div key={key} style={{ background: '#fff', padding: '16px 20px', borderRadius: 12, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 14, fontWeight: 500, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-              
-              {typeof settings[key] === 'boolean' ? (
-                <div onClick={() => updatePending(key, ! (pendingChanges[key] ?? settings[key]))} style={{ width: 44, height: 24, background: (pendingChanges[key] ?? settings[key]) ? '#22c55e' : '#cbd5e1', borderRadius: 12, position: 'relative', cursor: 'pointer', transition: '0.3s' }}>
-                  <div style={{ width: 20, height: 20, background: '#fff', borderRadius: '50%', position: 'absolute', top: 2, left: (pendingChanges[key] ?? settings[key]) ? 22 : 2, transition: '0.3s' }} />
-                </div>
-              ) : (
-                <input type="number" defaultValue={pendingChanges[key] ?? settings[key]} onBlur={(e) => updatePending(key, Number(e.target.value))} style={{ width: 100, padding: '8px', borderRadius: 6, border: '1px solid #cbd5e1' }} />
-              )}
-            </div>
+            <SettingCard key={key} keyName={key} value={settings[key]} />
           ))}
         </div>
       </div>
     </div>
   )
-                }
+}
+
+function SettingCard({ keyName, value }: { keyName: string; value: any }) {
+  const [val, setVal] = useState(value)
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async (newValue: any) => {
+    setSaving(true)
+    const realKey = keyName.replace('_naira', '')
+    await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { [realKey]: newValue } }),
+    })
+    setSaving(false)
+    alert('Saved!')
+  }
+
+  return (
+    <div style={{ 
+      background: '#fff', padding: '16px 20px', borderRadius: 12, 
+      border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', 
+      justifyContent: 'space-between', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+    }}>
+      <span style={{ fontSize: 14, fontWeight: 600, color: '#334155', textTransform: 'capitalize' }}>
+        {keyName.replace(/_/g, ' ')}
+      </span>
+
+      {typeof value === 'boolean' ? (
+        <input type="checkbox" checked={val} onChange={(e) => { setVal(e.target.checked); handleSave(e.target.checked); }} style={{ width: 20, height: 20, cursor: 'pointer' }} />
+      ) : (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input 
+            type="number" value={val} onChange={(e) => setVal(Number(e.target.value))}
+            style={{ width: 100, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+          />
+          <button 
+            onClick={() => handleSave(val)}
+            style={{ padding: '6px 12px', background: '#0f172a', color: '#fff', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+          >
+            {saving ? '...' : 'Save'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
