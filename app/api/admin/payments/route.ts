@@ -32,13 +32,27 @@ async function verifyAdmin(userId: string): Promise<boolean> {
 //   search     — search by student email or name
 //   export     — 'true' to return all records as CSV (ignores pagination)
 
-export async function GET(req: NextRequest) {
-  try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-    }
+function escapeCsv(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  const stringValue = String(value)
+  // If the value contains a comma, double quote, or newline, enclose it in double quotes
+  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+    // Escape internal double quotes by doubling them
+    return `"${stringValue.replace(/"/g, '""')}"`
+  }
+  return stringValue
+}
 
+export async function GET(req: NextRequest) {
+  // Handle DynamicServerError by calling auth() outside the try/catch block
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  }
+
+  try {
     const isAdmin = await verifyAdmin(userId)
     if (!isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -55,6 +69,37 @@ export async function GET(req: NextRequest) {
     const exportCsv = searchParams.get('export') === 'true'
 
     const offset = (page - 1) * limit
+
+    let userFilterIds: string[] | undefined
+    if (search) {
+      const { data: matchingUsers, error: usersSearchError } = await supabaseAdmin
+        .from('users')
+        .select('clerk_user_id')
+        .or(`email.ilike.%${search}%,full_name.ilike.%${search}%`)
+
+      if (usersSearchError) throw usersSearchError
+      userFilterIds = matchingUsers?.map(u => u.clerk_user_id) || []
+
+      // If no users match the search, return empty results immediately
+      if (userFilterIds.length === 0 && !exportCsv) {
+        return NextResponse.json({
+          payments: [],
+          summary: {
+            totalRevenueNaira: 0,
+            todayRevenueNaira: 0,
+            totalTransactions: 0,
+          },
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPrevPage: false,
+          },
+        })
+      }
+    }
 
     // Build payments query
     let query = supabaseAdmin
@@ -75,8 +120,9 @@ export async function GET(req: NextRequest) {
       )
       .order('created_at', { ascending: false })
 
-    if (!exportCsv) {
-      query = query.range(offset, offset + limit - 1)
+    if (userFilterIds !== undefined) {
+      // Apply user search filter to payments query
+      query = query.in('user_id', userFilterIds)
     }
 
     if (status) query = query.eq('status', status)
@@ -87,21 +133,15 @@ export async function GET(req: NextRequest) {
     const { data: payments, count, error: paymentsError } = await query
     if (paymentsError) throw paymentsError
 
-    // Fetch user details for all payments
+    // Fetch user details for all payments (only those in the current payment set)
     const userIds = Array.from(new Set((payments ?? []).map((p: { user_id: string }) => p.user_id).filter(Boolean)))
     let usersMap: Record<string, Record<string, unknown>> = {}
 
     if (userIds.length > 0) {
-      let usersQuery = supabaseAdmin
+      const { data: users, error: usersError } = await supabaseAdmin
         .from('users')
         .select('clerk_user_id, full_name, email, exam_type')
         .in('clerk_user_id', userIds)
-
-      if (search) {
-        usersQuery = usersQuery.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`)
-      }
-
-      const { data: users, error: usersError } = await usersQuery
       if (usersError) throw usersError
 
       usersMap = (users ?? []).reduce(
@@ -143,19 +183,16 @@ export async function GET(req: NextRequest) {
         : { clerk_user_id: payment.user_id, full_name: null, email: null, exam_type: null },
     }))
 
-    // If search applied, filter to matched users only
-    if (search) {
-      const matchedIds = new Set(Object.keys(usersMap))
-      enrichedPayments = enrichedPayments.filter(
-        (p: { student: { clerk_user_id: string } }) =>
-          matchedIds.has(p.student.clerk_user_id)
-      )
+    // Apply pagination after all filtering and enrichment for non-export requests
+    let paginatedPayments = enrichedPayments
+    if (!exportCsv) {
+      paginatedPayments = enrichedPayments.slice(offset, offset + limit)
     }
 
     // ── CSV Export ────────────────────────────────────────────────────────────
     if (exportCsv) {
       const csvRows = [
-        ['Date', 'Student Name', 'Email', 'Plan', 'Amount (Naira)', 'Status', 'Transaction ID'].join(','),
+        ['Date', 'Student Name', 'Email', 'Plan', 'Amount (Naira)', 'Status', 'Transaction ID'].map(escapeCsv).join(','),
         ...enrichedPayments.map((p: {
           created_at: string
           student: { full_name: unknown; email: unknown }
@@ -165,13 +202,13 @@ export async function GET(req: NextRequest) {
           transaction_id: string
         }) =>
           [
-            new Date(p.created_at).toLocaleDateString('en-NG'),
-            `"${p.student.full_name ?? 'Unknown'}"`,
-            `"${p.student.email ?? 'Unknown'}"`,
-            p.plan_name ?? '',
-            p.amount_naira.toFixed(2),
-            p.status,
-            p.transaction_id ?? '',
+            escapeCsv(new Date(p.created_at).toLocaleDateString('en-NG')),
+            escapeCsv(p.student.full_name ?? 'Unknown'),
+            escapeCsv(p.student.email ?? 'Unknown'),
+            escapeCsv(p.plan_name ?? ''),
+            escapeCsv(p.amount_naira.toFixed(2)),
+            escapeCsv(p.status),
+            escapeCsv(p.transaction_id ?? ''),
           ].join(',')
         ),
       ]
@@ -216,7 +253,7 @@ export async function GET(req: NextRequest) {
     const totalPages = Math.ceil((count ?? 0) / limit)
 
     return NextResponse.json({
-      payments: enrichedPayments,
+      payments: paginatedPayments,
       summary: {
         totalRevenueNaira: totalRevenueKobo / 100,
         todayRevenueNaira: todayRevenueKobo / 100,
@@ -246,5 +283,4 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     )
   }
-      }
-      
+          }
