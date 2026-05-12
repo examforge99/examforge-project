@@ -72,38 +72,47 @@ function SettingControl({ keyName, value, onChange }: {
   value: any; 
   onChange: (val: any) => void 
 }) {
-  // Boolean Toggles
+  const [tempValue, setTempValue] = useState(value);
+
+  // Boolean Toggles (Switch instantly)
   if (typeof value === 'boolean') {
     return (
-      <input 
-        type="checkbox" 
-        checked={value} 
-        onChange={(e) => onChange(e.target.checked)} 
-        style={{ width: '40px', height: '20px', cursor: 'pointer', accentColor: '#0f172a' }} 
-      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <input 
+          type="checkbox" 
+          checked={value} 
+          onChange={(e) => onChange(e.target.checked)} 
+          style={{ width: '40px', height: '20px', cursor: 'pointer', accentColor: '#0f172a' }} 
+        />
+        <span style={{ fontSize: '12px' }}>{value ? 'ON' : 'OFF'}</span>
+      </div>
     )
   }
 
-  // Number / Price Inputs
-  if (typeof value === 'number' || keyName.includes('price')) {
-    const isPrice = keyName.includes('price')
-    return (
+  // Text and Number Inputs (With manual Save Button)
+  return (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
       <input 
-        type="number" 
-        defaultValue={isPrice ? value / 100 : value}
-        onBlur={(e) => onChange(Number(e.target.value))}
+        type={typeof value === 'number' || keyName.includes('price') ? "number" : "text"}
+        value={tempValue}
+        onChange={(e) => setTempValue(e.target.value)}
         style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
       />
-    )
-  }
-
-  // String Inputs
-  return (
-    <input 
-      type="text" 
-      defaultValue={value} 
-      onBlur={(e) => onChange(e.target.value)}
-      style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
-    />
+      <button 
+        onClick={() => onChange(tempValue)}
+        style={{ 
+          padding: '8px 16px', 
+          background: '#0f172a', 
+          color: 'white', 
+          border: 'none', 
+          borderRadius: 4, 
+          cursor: 'pointer',
+          fontWeight: 600,
+          fontSize: '12px'
+        }}
+      >
+        Save
+      </button>
+    </div>
   )
-      }
+}
