@@ -1,5 +1,26 @@
-import { supabaseAdmin } from '@/lib/supabase'
+ import { supabaseAdmin } from '@/lib/supabase'
 import { auth } from '@clerk/nextjs/server'
+
+// ── Helper — log to error_logs table directly (no RPC) ───────────────────────
+
+async function logError(
+  error_code: string,
+  message: string,
+  stack_trace?: string | null,
+  clerk_user_id?: string | null,
+  metadata?: Record<string, unknown> | null
+) {
+  await supabaseAdmin
+    .from('error_logs')
+    .insert({
+      error_code,
+      message,
+      stack_trace: stack_trace ?? null,
+      clerk_user_id: clerk_user_id ?? null,
+      metadata: metadata ?? null,
+    })
+    .catch(() => {})
+}
 
 // GET /api/student/context?user_id=xxx
 // Returns full student academic profile for dashboard + AI personalization
@@ -22,10 +43,32 @@ export async function GET(request: Request) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // ── Run all independent queries in parallel ──────────────────────────────
+    // ── Fetch user first — need exam_type to filter exam_calendar ───────────
+
+    const userRes = await supabaseAdmin
+      .from('users')
+      .select('full_name, email, exam_type, department, target_score, weak_subjects, subscription_status, onboarding_completed, last_active_at, created_at')
+      .eq('clerk_user_id', user_id)
+      .single()
+
+    // ── Error handling ───────────────────────────────────────────────────────
+
+    if (userRes.error || !userRes.data) {
+      await logError(
+        'STUDENT_CONTEXT_USER_NOT_FOUND',
+        userRes.error?.message ?? 'User not found',
+        null,
+        user_id,
+        null
+      )
+      return Response.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    const user = userRes.data
+
+    // ── Run remaining queries in parallel, now that we have exam_type ────────
 
     const [
-      userRes,
       streakRes,
       subscriptionRes,
       metricsRes,
@@ -33,21 +76,14 @@ export async function GET(request: Request) {
       examCalendarRes,
       recentAttemptsRes,
     ] = await Promise.all([
-      // 1. User profile
-      supabaseAdmin
-        .from('users')
-        .select('full_name, email, exam_type, department, target_score, weak_subjects, subscription_status, onboarding_completed, last_active_at, created_at')
-        .eq('clerk_user_id', user_id)
-        .single(),
-
-      // 2. Streak
+      // 1. Streak
       supabaseAdmin
         .from('streaks')
         .select('current_streak_days, longest_streak, last_study_date, streak_active')
         .eq('clerk_user_id', user_id)
         .maybeSingle(),
 
-      // 3. Subscription
+      // 2. Subscription
       supabaseAdmin
         .from('subscriptions')
         .select('plan_name, start_date, expiry_date, grace_period_end, status')
@@ -56,30 +92,32 @@ export async function GET(request: Request) {
         .limit(1)
         .maybeSingle(),
 
-      // 4. Metrics — per subject/topic accuracy
+      // 3. Metrics — per subject/topic accuracy
       supabaseAdmin
         .from('metrics')
         .select('subject, topic, accuracy_percentage, total_attempted, total_correct, last_updated')
         .eq('clerk_user_id', user_id)
         .order('total_attempted', { ascending: false }),
 
-      // 5. AI coaching memory
+      // 4. AI coaching memory
       supabaseAdmin
         .from('ai_student_summary')
         .select('summary_text')
         .eq('user_id', user_id)
         .maybeSingle(),
 
-      // 6. Exam calendar — match student's exam type
+      // 5. Exam calendar — filtered by student's exam_type and is_active
       supabaseAdmin
         .from('exam_calendar')
-        .select('exam_name, exam_date, description')
-        .gte('exam_date', new Date().toISOString())
-        .order('exam_date', { ascending: true })
+        .select('event_name, event_date, description, exam_type')
+        .eq('exam_type', user.exam_type)
+        .eq('is_active', true)
+        .gte('event_date', new Date().toISOString())
+        .order('event_date', { ascending: true })
         .limit(1)
         .maybeSingle(),
 
-      // 7. Recent attempts for session history + trend calculation
+      // 6. Recent attempts for session history + trend calculation
       supabaseAdmin
         .from('attempts')
         .select('question_id, is_correct, attempt_timestamp, time_spent_seconds, session_id')
@@ -88,19 +126,6 @@ export async function GET(request: Request) {
         .limit(200),
     ])
 
-    // ── Error handling ───────────────────────────────────────────────────────
-
-    if (userRes.error || !userRes.data) {
-      await supabaseAdmin.rpc('log_error', {
-        p_error_code: 'STUDENT_CONTEXT_USER_NOT_FOUND',
-        p_message: userRes.error?.message ?? 'User not found',
-        p_user_id: user_id,
-        p_metadata: null,
-      }).catch(() => {}) // don't throw if logging fails
-      return Response.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    const user = userRes.data
     const streak = streakRes.data
     const subscription = subscriptionRes.data
     const metrics = metricsRes.data ?? []
@@ -264,11 +289,11 @@ export async function GET(request: Request) {
     let examInfo: { exam_name: string; exam_date: string; days_until: number; description: string | null } | null = null
     if (examCalendar) {
       const daysUntil = Math.max(0, Math.floor(
-        (new Date(examCalendar.exam_date).getTime() - Date.now()) / 86_400_000
+        (new Date(examCalendar.event_date).getTime() - Date.now()) / 86_400_000
       ))
       examInfo = {
-        exam_name: examCalendar.exam_name,
-        exam_date: examCalendar.exam_date,
+        exam_name: examCalendar.event_name,
+        exam_date: examCalendar.event_date,
         days_until: daysUntil,
         description: examCalendar.description ?? null,
       }
@@ -342,14 +367,15 @@ export async function GET(request: Request) {
     })
 
   } catch (err: any) {
-    await supabaseAdmin.rpc('log_error', {
-      p_error_code: 'STUDENT_CONTEXT_UNHANDLED',
-      p_message: err.message,
-      p_user_id: null,
-      p_metadata: null,
-    }).catch(() => {})
+    await logError(
+      'STUDENT_CONTEXT_UNHANDLED',
+      err.message,
+      err.stack ?? null,
+      null,
+      null
+    )
 
     return Response.json({ error: err.message }, { status: 500 })
   }
-        }
-      
+               }
+    
