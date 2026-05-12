@@ -1,129 +1,179 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Settings {
+  [key: string]: any
+}
+
+interface Toast {
+  id: number
+  message: string
+  type: 'success' | 'error'
+}
+
+// ─── Components ───────────────────────────────────────────────────────────────
+
+const Toggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
+  <button
+    onClick={() => onChange(!value)}
+    className={`w-12 h-6 rounded-full transition-colors duration-200 relative ${value ? 'bg-blue-600' : 'bg-slate-200'}`}
+  >
+    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${value ? 'left-7' : 'left-1'}`} />
+  </button>
+)
+
+// ─── Page Implementation ──────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
-  const [settings, setSettings] = useState<Record<string, any>>({})
-  const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({})
-  const [activeTab, setActiveTab] = useState('General')
+  const [settings, setSettings] = useState<Settings>({})
+  const [pendingChanges, setPendingChanges] = useState<Settings>({})
+  const [activeTab, setActiveTab] = useState('Payments')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [toasts, setToasts] = useState<Toast[]>([])
 
-  useEffect(() => {
-    fetch('/api/admin/settings')
-      .then(res => res.json())
-      .then(data => setSettings(data.settings))
-      .finally(() => setLoading(false))
+  const addToast = (message: string, type: 'success' | 'error') => {
+    const id = Date.now()
+    setToasts((prev) => [...prev, { id, message, type }])
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000)
+  }
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings')
+      if (!res.ok) throw new Error('Failed to fetch settings')
+      const data = await res.json()
+      setSettings(data.settings)
+    } catch (err) {
+      addToast('Failed to load settings', 'error')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const updatePending = (key: string, value: any) => {
-    setPendingChanges(prev => ({ ...prev, [key]: value }))
-  }
+  useEffect(() => { fetchSettings() }, [fetchSettings])
 
   const saveChanges = async () => {
+    if (!confirm('Are you sure you want to apply these changes?')) return
+    
     setSaving(true)
-    const finalUpdates: Record<string, any> = {}
-    Object.keys(pendingChanges).forEach(k => {
-      finalUpdates[k.replace('_naira', '')] = pendingChanges[k]
+    const finalUpdates: Settings = {}
+    
+    Object.keys(pendingChanges).forEach((key) => {
+      // If updating a naira price, remove the _naira suffix for the API
+      const realKey = key.replace('_naira', '')
+      finalUpdates[realKey] = pendingChanges[key]
     })
 
-    const res = await fetch('/api/admin/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: finalUpdates }),
-    })
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: finalUpdates }),
+      })
 
-    if (res.ok) {
+      if (!res.ok) throw new Error('Update failed')
+      
       const data = await res.json()
-      setSettings(prev => ({ ...prev, ...data.updated }))
+      setSettings((prev) => ({ ...prev, ...data.updated }))
       setPendingChanges({})
-      alert('Changes deployed successfully')
+      addToast('Changes saved successfully', 'success')
+    } catch (err) {
+      addToast('Failed to save changes', 'error')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
-  const getCategory = (key: string) => {
-    if (key.endsWith('_naira')) return 'Pricing'
-    if (key.includes('_enabled')) return 'Subjects'
-    if (key.includes('limit') || key.includes('days') || key.includes('threshold')) return 'Limits'
-    return 'General'
+  const getCategory = (key: string): string => {
+    if (key.includes('price') || key.includes('plan')) return 'Payments'
+    if (key.includes('enabled') || key.includes('coupons') || key.includes('referrals') || key.includes('ai')) return 'Features'
+    if (key.includes('signups') || key.includes('maintenance') || key.includes('demo') || key.includes('support')) return 'Access'
+    return 'Referrals' // Includes referral_extension_days etc.
   }
 
-  const koboKeys = ['price_1_month', 'price_3_months', 'price_6_months', 'price_12_months']
-  const displayKeys = Object.keys(settings).filter(k => !koboKeys.includes(k))
+  if (loading) return <SettingsSkeleton />
+
+  const tabs = ['Payments', 'Features', 'Access', 'Referrals']
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0D1117', padding: '40px 24px', fontFamily: "'DM Mono', monospace" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&display=swap');
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-      `}</style>
-
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-        
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-          <div>
-            <h1 style={{ fontSize: 18, color: '#F1F5F9', margin: 0, fontWeight: 600, letterSpacing: '-0.3px' }}>Platform Settings</h1>
-            <p style={{ color: '#4A5568', fontSize: 11, marginTop: 4 }}>Manage global configuration</p>
-          </div>
-          {Object.keys(pendingChanges).length > 0 && (
-            <button onClick={saveChanges} disabled={saving} style={{ 
-              background: '#1D4ED8', color: 'white', border: 'none', padding: '8px 16px', 
-              borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' 
-            }}>
-              {saving ? 'Deploying...' : `Save ${Object.keys(pendingChanges).length} Changes`}
-            </button>
-          )}
+    <div className="min-h-screen bg-[#faf9f7] p-6 md:p-12 font-sans text-[#0f172a]">
+      {/* Header */}
+      <div className="max-w-4xl mx-auto mb-8 flex justify-between items-end">
+        <div>
+          <h1 className="font-serif text-3xl font-bold mb-2">Platform Settings</h1>
+          <p className="text-[#64748b]">Configure your ExamForge operational parameters.</p>
         </div>
+        {Object.keys(pendingChanges).length > 0 && (
+          <button 
+            onClick={saveChanges} 
+            disabled={saving}
+            className="bg-[#1d4ed8] text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition"
+          >
+            {saving ? 'Saving...' : `Save ${Object.keys(pendingChanges).length} Changes`}
+          </button>
+        )}
+      </div>
 
-        {/* Tab Navigation */}
-        <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid #21262D', marginBottom: 24 }}>
-          {['General', 'Pricing', 'Limits', 'Subjects'].map(cat => (
-            <button key={cat} onClick={() => setActiveTab(cat)} style={{ 
-              padding: '10px 0', border: 'none', background: 'none', 
-              color: activeTab === cat ? '#E2E8F0' : '#4A5568',
-              borderBottom: activeTab === cat ? '2px solid #1D4ED8' : 'none',
-              cursor: 'pointer', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px'
-            }}>
-              {cat}
-            </button>
+      {/* Tabs */}
+      <div className="max-w-4xl mx-auto flex gap-6 border-b border-[rgba(15,23,42,0.08)] mb-8">
+        {tabs.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`pb-3 font-semibold transition-colors ${activeTab === tab ? 'text-[#1d4ed8] border-b-2 border-[#1d4ed8]' : 'text-[#64748b] hover:text-[#0f172a]'}`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Settings Grid */}
+      <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+        {Object.keys(settings)
+          .filter((k) => getCategory(k) === activeTab && !k.includes('kobo')) // Only show user-friendly keys
+          .sort()
+          .map((key) => (
+            <div key={key} className="bg-white p-5 rounded-xl border border-[rgba(15,23,42,0.08)] flex justify-between items-center shadow-sm">
+              <span className="text-[#475569] font-medium capitalize">{key.replace(/_/g, ' ')}</span>
+              {typeof settings[key] === 'boolean' ? (
+                <Toggle 
+                  value={pendingChanges[key] ?? settings[key]} 
+                  onChange={(v) => setPendingChanges(prev => ({ ...prev, [key]: v }))} 
+                />
+              ) : (
+                <input
+                  type="number"
+                  className="w-24 p-2 rounded border border-slate-200 text-right focus:border-[#1d4ed8] outline-none"
+                  defaultValue={pendingChanges[key] ?? settings[key]}
+                  onBlur={(e) => setPendingChanges(prev => ({ ...prev, [key]: Number(e.target.value) }))}
+                />
+              )}
+            </div>
           ))}
-        </div>
+      </div>
 
-        {/* Content Area */}
-        <div style={{ display: 'grid', gap: '10px' }}>
-          {loading ? (
-            // Skeleton Loading States
-            Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ 
-                height: 52, background: 'linear-gradient(90deg, #161B22 25%, #1C2331 50%, #161B22 75%)',
-                backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', borderRadius: 8 
-              }} />
-            ))
-          ) : (
-            // Actual Content
-            displayKeys.filter(k => getCategory(k) === activeTab).sort().map(key => (
-              <div key={key} style={{ 
-                background: '#161B22', border: '1px solid #21262D', borderRadius: 8, 
-                padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' 
-              }}>
-                <span style={{ fontSize: 12, color: '#94A3B8', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-                
-                {typeof settings[key] === 'boolean' ? (
-                  <div onClick={() => updatePending(key, !(pendingChanges[key] ?? settings[key]))} 
-                    style={{ width: 36, height: 20, background: (pendingChanges[key] ?? settings[key]) ? '#2563EB' : '#21262D', borderRadius: 10, position: 'relative', cursor: 'pointer', transition: '0.3s' }}>
-                    <div style={{ width: 16, height: 16, background: '#fff', borderRadius: '50%', position: 'absolute', top: 2, left: (pendingChanges[key] ?? settings[key]) ? 18 : 2, transition: '0.3s' }} />
-                  </div>
-                ) : (
-                  <input type="number" defaultValue={pendingChanges[key] ?? settings[key]} onBlur={(e) => updatePending(key, Number(e.target.value))} 
-                    style={{ width: 100, background: '#0D1117', border: '1px solid #21262D', color: '#E2E8F0', padding: '6px 8px', borderRadius: 4, textAlign: 'right', fontSize: 12 }} 
-                  />
-                )}
-              </div>
-            ))
-          )}
-        </div>
+      {/* Toasts */}
+      <div className="fixed top-4 right-4 flex flex-col gap-2">
+        {toasts.map((t) => (
+          <div key={t.id} className={`px-6 py-3 rounded-lg shadow-lg text-white font-medium ${t.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+            {t.message}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="min-h-screen bg-[#faf9f7] p-12">
+      <div className="max-w-4xl mx-auto space-y-4">
+        {[1,2,3,4].map(i => (
+          <div key={i} className="h-16 bg-white rounded-xl border border-[rgba(15,23,42,0.08)] animate-pulse" />
+        ))}
       </div>
     </div>
   )
