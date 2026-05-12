@@ -380,7 +380,7 @@ export default function DashboardPage() {
           ) : (
             <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
               {data?.user?.exam_type} preparation
-              {(data?.streak?.current_streak_days ?? 0) > 0 && ` · ${data.streak.current_streak_days} day streak`}
+              {(data?.streak?.current_streak_days ?? 0) > 0 && ` · ${data?.streak?.current_streak_days ?? 0} day streak`}
             </p>
           )}
         </div>
@@ -504,7 +504,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Neglected subjects ── */}
+        {/* ── Neglected subjects warning ── */}
         {!loading && neglected.length > 0 && (
           <div style={{
             background: '#fff7ed',
@@ -767,4 +767,4 @@ export default function DashboardPage() {
       `}</style>
     </div>
   )
-              }
+                       }
