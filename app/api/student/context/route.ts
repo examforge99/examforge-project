@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
-    const { userId: authUserId } = auth()
+    const { userId: authUserId } = await auth()
     const { searchParams } = new URL(request.url)
     const user_id = searchParams.get('user_id')
 
