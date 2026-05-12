@@ -17,17 +17,8 @@ async function verifyAdmin(userId: string): Promise<boolean> {
 }
 
 // ─── GET /api/admin/errors ────────────────────────────────────────────────────
-// Returns all error_logs entries (excluding FLAGGED_ANSWER which has its own route).
-// Each error includes the student details if user_id is present.
-//
-// Query params:
-//   page        — default 1
-//   limit       — default 20, max 100
-//   error_code  — filter by specific error code
-//   user_id     — filter by specific student
-//   date_from   — filter from date (YYYY-MM-DD)
-//   date_to     — filter to date (YYYY-MM-DD)
-//   search      — search in message or error_code
+// Columns in error_logs: id, error_code, message, stack_trace,
+//                        clerk_user_id, timestamp, metadata, reviewed
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,54 +33,42 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url)
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
-    const errorCode = searchParams.get('error_code')?.trim() ?? ''
-    const filterUserId = searchParams.get('user_id')?.trim() ?? ''
-    const dateFrom = searchParams.get('date_from')?.trim() ?? ''
-    const dateTo = searchParams.get('date_to')?.trim() ?? ''
-    const search = searchParams.get('search')?.trim() ?? ''
-
-    const offset = (page - 1) * limit
+    const page        = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const limit       = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+    const errorCode   = searchParams.get('error_code')?.trim() ?? ''
+    const filterUser  = searchParams.get('user_id')?.trim() ?? ''
+    const dateFrom    = searchParams.get('date_from')?.trim() ?? ''
+    const dateTo      = searchParams.get('date_to')?.trim() ?? ''
+    const search      = searchParams.get('search')?.trim() ?? ''
+    const offset      = (page - 1) * limit
 
     let query = supabaseAdmin
       .from('error_logs')
       .select(
-        `
-        id,
-        error_code,
-        message,
-        user_id,
-        metadata,
-        reviewed,
-        created_at
-        `,
+        `id, error_code, message, stack_trace, clerk_user_id, timestamp, metadata, reviewed`,
         { count: 'exact' }
       )
-      // Exclude flagged answers — those are handled by /api/admin/flags
       .neq('error_code', 'FLAGGED_ANSWER')
-      .order('created_at', { ascending: false })
+      .order('timestamp', { ascending: false })   // ← correct column name
       .range(offset, offset + limit - 1)
 
-    if (errorCode) query = query.eq('error_code', errorCode)
-    if (filterUserId) query = query.eq('user_id', filterUserId)
-    if (dateFrom) query = query.gte('created_at', `${dateFrom}T00:00:00.000Z`)
-    if (dateTo) query = query.lte('created_at', `${dateTo}T23:59:59.999Z`)
-    if (search) {
-      query = query.or(`error_code.ilike.%${search}%,message.ilike.%${search}%`)
-    }
+    if (errorCode)   query = query.eq('error_code', errorCode)
+    if (filterUser)  query = query.eq('clerk_user_id', filterUser)  // ← correct column name
+    if (dateFrom)    query = query.gte('timestamp', `${dateFrom}T00:00:00.000Z`)
+    if (dateTo)      query = query.lte('timestamp', `${dateTo}T23:59:59.999Z`)
+    if (search)      query = query.or(`error_code.ilike.%${search}%,message.ilike.%${search}%`)
 
     const { data: errors, count, error: errorsError } = await query
     if (errorsError) throw errorsError
 
-    // Fetch student details for errors that have a user_id
+    // Fetch student details for errors that have a clerk_user_id
     const userIds = Array.from(
-  new Set(
-    (errors ?? [])
-      .map((e: { user_id: string }) => e.user_id)
-      .filter(Boolean)
-  )
-)
+      new Set(
+        (errors ?? [])
+          .map((e: { clerk_user_id: string }) => e.clerk_user_id)
+          .filter(Boolean)
+      )
+    )
 
     let usersMap: Record<string, Record<string, unknown>> = {}
 
@@ -115,29 +94,31 @@ export async function GET(req: NextRequest) {
       id: string
       error_code: string
       message: string
-      user_id: string | null
+      stack_trace: string | null
+      clerk_user_id: string | null
+      timestamp: string
       metadata: Record<string, unknown> | null
       reviewed: boolean
-      created_at: string
     }) => ({
-      id: err.id,
-      error_code: err.error_code,
-      message: err.message,
-      metadata: err.metadata,
-      reviewed: err.reviewed,
-      created_at: err.created_at,
-      student: err.user_id && usersMap[err.user_id]
+      id:           err.id,
+      error_code:   err.error_code,
+      message:      err.message,
+      stack_trace:  err.stack_trace,
+      metadata:     err.metadata,
+      reviewed:     err.reviewed,
+      created_at:   err.timestamp,   // aliased so frontend doesn't need to change
+      student: err.clerk_user_id && usersMap[err.clerk_user_id]
         ? {
-            clerk_user_id: err.user_id,
-            full_name: usersMap[err.user_id].full_name,
-            email: usersMap[err.user_id].email,
+            clerk_user_id: err.clerk_user_id,
+            full_name: usersMap[err.clerk_user_id].full_name,
+            email:     usersMap[err.clerk_user_id].email,
           }
-        : err.user_id
-          ? { clerk_user_id: err.user_id, full_name: null, email: null }
+        : err.clerk_user_id
+          ? { clerk_user_id: err.clerk_user_id, full_name: null, email: null }
           : null,
     }))
 
-    // Error code frequency summary — top 10 most common error codes
+    // Top 10 most common error codes
     const { data: errorSummary } = await supabaseAdmin
       .from('error_logs')
       .select('error_code')
@@ -157,27 +138,26 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       errors: enrichedErrors,
-      summary: {
-        total: count ?? 0,
-        topErrors,
-      },
+      summary: { total: count ?? 0, topErrors },
       pagination: {
         page,
         limit,
-        total: count ?? 0,
+        total:       count ?? 0,
         totalPages,
         hasNextPage: page < totalPages,
         hasPrevPage: page > 1,
       },
     })
+
   } catch (err) {
     console.error('[admin/errors] GET Error:', err)
 
+    // Log without crashing — use correct column names
     await supabaseAdmin.from('error_logs').insert({
-      error_code: 'ADMIN_ERRORS_FETCH_ERROR',
-      message: err instanceof Error ? err.message : 'Unknown error',
-      user_id: null,
-      metadata: { route: 'GET /api/admin/errors' },
+      error_code:    'ADMIN_ERRORS_FETCH_ERROR',
+      message:       err instanceof Error ? err.message : 'Unknown error',
+      clerk_user_id: null,
+      metadata:      { route: 'GET /api/admin/errors' },
     })
 
     return NextResponse.json(
@@ -188,7 +168,6 @@ export async function GET(req: NextRequest) {
 }
 
 // ─── PATCH /api/admin/errors ──────────────────────────────────────────────────
-// Mark one or more errors as reviewed.
 // Body: { error_ids: string[], reviewed: boolean }
 
 export async function PATCH(req: NextRequest) {
@@ -230,14 +209,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({
       message: `${error_ids.length} error${error_ids.length > 1 ? 's' : ''} marked as ${reviewed ? 'reviewed' : 'unreviewed'}`,
     })
+
   } catch (err) {
     console.error('[admin/errors] PATCH Error:', err)
 
     await supabaseAdmin.from('error_logs').insert({
-      error_code: 'ADMIN_ERRORS_UPDATE_ERROR',
-      message: err instanceof Error ? err.message : 'Unknown error',
-      user_id: null,
-      metadata: { route: 'PATCH /api/admin/errors' },
+      error_code:    'ADMIN_ERRORS_UPDATE_ERROR',
+      message:       err instanceof Error ? err.message : 'Unknown error',
+      clerk_user_id: null,
+      metadata:      { route: 'PATCH /api/admin/errors' },
     })
 
     return NextResponse.json(
@@ -245,5 +225,4 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     )
   }
-      }
-      
+}
