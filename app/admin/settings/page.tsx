@@ -67,11 +67,20 @@ export default function AdminSettingsPage() {
   )
 }
 
-function SettingControl({ keyName, value, onChange }: any) {
+function SettingControl({ keyName, value, onChange }: { 
+  keyName: string; 
+  value: any; 
+  onChange: (val: any) => void 
+}) {
   // Boolean Toggles
   if (typeof value === 'boolean') {
     return (
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} style={{ transform: 'scale(1.5)' }} />
+      <input 
+        type="checkbox" 
+        checked={value} 
+        onChange={(e) => onChange(e.target.checked)} 
+        style={{ width: '40px', height: '20px', cursor: 'pointer', accentColor: '#0f172a' }} 
+      />
     )
   }
 
@@ -79,14 +88,12 @@ function SettingControl({ keyName, value, onChange }: any) {
   if (typeof value === 'number' || keyName.includes('price')) {
     const isPrice = keyName.includes('price')
     return (
-      <div style={{ display: 'flex', gap: 10 }}>
-        <input 
-          type="number" 
-          defaultValue={isPrice ? value / 100 : value} // Assuming API returns raw kobo if logic matches
-          onBlur={(e) => onChange(Number(e.target.value))}
-          style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
-        />
-      </div>
+      <input 
+        type="number" 
+        defaultValue={isPrice ? value / 100 : value}
+        onBlur={(e) => onChange(Number(e.target.value))}
+        style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
+      />
     )
   }
 
@@ -99,4 +106,4 @@ function SettingControl({ keyName, value, onChange }: any) {
       style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
     />
   )
-}
+      }
