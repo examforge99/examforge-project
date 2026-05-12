@@ -101,17 +101,93 @@ const Icons = {
   ),
 }
 
-// ─── Skeleton loader ──────────────────────────────────────────────────────────
+// ─── Skeleton components ─────────────────────────────────────────────────────
 
-function Skeleton({ width = '100%', height = 16, radius = 6 }: { width?: string | number; height?: number; radius?: number }) {
+function Skeleton({ width = "100%", height = 16, radius = 6 }: { width?: string | number; height?: number; radius?: number }) {
   return (
-    <div style={{
-      width,
-      height,
-      background: 'rgba(15,23,42,0.06)',
-      borderRadius: radius,
-      animation: 'pulse 1.5s ease-in-out infinite',
-    }} />
+    <div style={{ width, height, background: "rgba(15,23,42,0.06)", borderRadius: radius, animation: "pulse 1.5s ease-in-out infinite" }} />
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <div style={{ maxWidth: 680, margin: "0 auto" }}>
+      {/* Header skeleton */}
+      <div style={{ marginBottom: 24 }}>
+        <Skeleton width="55%" height={28} radius={6} />
+        <div style={{ marginTop: 8 }}><Skeleton width="35%" height={13} /></div>
+      </div>
+
+      {/* Stats row skeleton */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
+        {[1,2,3].map((i) => (
+          <div key={i} style={{ background: "#ffffff", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 12, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <Skeleton width={20} height={20} radius={10} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+              <Skeleton width="60%" height={22} radius={4} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <Skeleton width="40%" height={11} radius={3} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Exam countdown skeleton */}
+      <div style={{ background: "#0f172a", borderRadius: 14, padding: 20, marginBottom: 20 }}>
+        <div style={{ marginBottom: 8 }}><Skeleton width="30%" height={11} radius={3} /></div>
+        <Skeleton width="25%" height={36} radius={4} />
+        <div style={{ marginTop: 8 }}><Skeleton width="20%" height={12} radius={3} /></div>
+      </div>
+
+      {/* Quick actions skeleton */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 14 }}><Skeleton width="20%" height={20} radius={4} /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
+          {[1,2,3].map((i) => (
+            <div key={i} style={{ background: "#ffffff", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, padding: 20 }}>
+              <div style={{ marginBottom: 12 }}><Skeleton width={40} height={40} radius={10} /></div>
+              <div style={{ marginBottom: 6 }}><Skeleton width="70%" height={16} radius={4} /></div>
+              <Skeleton width="90%" height={12} radius={3} />
+              <div style={{ marginTop: 8 }}><Skeleton width="30%" height={12} radius={3} /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Performance skeleton */}
+      <div style={{ background: "#ffffff", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, padding: 20, marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}><Skeleton width="30%" height={20} radius={4} /></div>
+        {[1,2,3,4].map((i) => (
+          <div key={i} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <Skeleton width="35%" height={13} radius={3} />
+              <Skeleton width="12%" height={13} radius={3} />
+            </div>
+            <Skeleton width="100%" height={6} radius={3} />
+          </div>
+        ))}
+      </div>
+
+      {/* Recent sessions skeleton */}
+      <div style={{ background: "#ffffff", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, padding: 20 }}>
+        <div style={{ marginBottom: 14 }}><Skeleton width="35%" height={20} radius={4} /></div>
+        {[1,2,3].map((i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#faf9f7", borderRadius: 10, marginBottom: 8 }}>
+            <div>
+              <div style={{ marginBottom: 5 }}><Skeleton width={100} height={13} radius={3} /></div>
+              <Skeleton width={60} height={11} radius={3} />
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ marginBottom: 4 }}><Skeleton width={40} height={16} radius={3} /></div>
+              <Skeleton width={30} height={11} radius={3} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -304,7 +380,7 @@ export default function DashboardPage() {
           ) : (
             <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
               {data?.user?.exam_type} preparation
-              {data?.streak?.current_streak_days > 0 && ` · ${data.streak.current_streak_days} day streak`}
+              {(data?.streak?.current_streak_days ?? 0) > 0 && ` · ${data.streak.current_streak_days} day streak`}
             </p>
           )}
         </div>
@@ -428,7 +504,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Neglected subjects warning ── */}
+        {/* ── Neglected subjects ── */}
         {!loading && neglected.length > 0 && (
           <div style={{
             background: '#fff7ed',
@@ -691,4 +767,4 @@ export default function DashboardPage() {
       `}</style>
     </div>
   )
-                  }
+              }
