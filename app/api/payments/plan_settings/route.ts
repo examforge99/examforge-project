@@ -29,23 +29,6 @@ const ALL_SETTING_KEYS = [
   'plan_12_months_enabled',
 ] as const
 
-// ── Helper — log to error_logs table directly (no RPC) ───────────────────────
-
-async function logError(
-  error_code: string,
-  message: string,
-  stack_trace?: string | null,
-  clerk_user_id?: string | null,
-  metadata?: Record<string, unknown> | null
-) {
-  
-  async function logError(
-  error_code: string,
-  message: string,
-  stack_trace?: string | null,
-  clerk_user_id?: string | null,
-  metadata?: Record<string, unknown> | null
-) {
 async function logError(
   error_code: string,
   message: string,
@@ -66,8 +49,6 @@ async function logError(
   } catch (_) {}
 }
 
-// ── Route ────────────────────────────────────────────────────────────────────
-
 export async function GET() {
   try {
     const { data, error } = await supabaseAdmin
@@ -76,66 +57,41 @@ export async function GET() {
       .in('setting_name', [...ALL_SETTING_KEYS])
 
     if (error) {
-      await logError(
-        'PLAN_SETTINGS_FETCH_ERROR',
-        error.message,
-        null,
-        null,
-        { hint: error.hint ?? null }
-      )
+      await logError('PLAN_SETTINGS_FETCH_ERROR', error.message, null, null, { hint: error.hint ?? null })
       return Response.json(
         { error: 'Could not load plan settings. Please try again.' },
         { status: 500 }
       )
     }
 
-    // Build settings map
     const settingsMap: Record<string, string> = {}
     for (const row of data ?? []) {
       settingsMap[row.setting_name] = row.setting_value
     }
 
-    // D6 — Validate all required prices exist before returning anything
+    // D6 — All prices must exist or return error
     const missingKeys = REQUIRED_PRICE_KEYS.filter(key => !settingsMap[key])
     if (missingKeys.length > 0) {
-      await logError(
-        'PLAN_SETTINGS_MISSING_PRICES',
-        `Missing price keys: ${missingKeys.join(', ')}`,
-        null,
-        null,
-        { missing_keys: missingKeys }
-      )
+      await logError('PLAN_SETTINGS_MISSING_PRICES', `Missing: ${missingKeys.join(', ')}`, null, null, { missing_keys: missingKeys })
       return Response.json(
         { error: 'Plan prices are not configured. Please contact support.' },
         { status: 500 }
       )
     }
 
-    // D5 — Prices stored in kobo, returned in naira (divide by 100)
+    // D5 — Prices stored in kobo, displayed in naira
     const price1Month   = parseInt(settingsMap['price_1_month'])
     const price3Months  = parseInt(settingsMap['price_3_months'])
     const price6Months  = parseInt(settingsMap['price_6_months'])
     const price12Months = parseInt(settingsMap['price_12_months'])
 
-    // Validate parsed values are actual numbers
-    if (
-      isNaN(price1Month)   ||
-      isNaN(price3Months)  ||
-      isNaN(price6Months)  ||
-      isNaN(price12Months)
-    ) {
-      await logError(
-        'PLAN_SETTINGS_INVALID_PRICES',
-        'One or more price values could not be parsed as numbers',
-        null,
-        null,
-        {
-          price_1_month:   settingsMap['price_1_month'],
-          price_3_months:  settingsMap['price_3_months'],
-          price_6_months:  settingsMap['price_6_months'],
-          price_12_months: settingsMap['price_12_months'],
-        }
-      )
+    if (isNaN(price1Month) || isNaN(price3Months) || isNaN(price6Months) || isNaN(price12Months)) {
+      await logError('PLAN_SETTINGS_INVALID_PRICES', 'A price value could not be parsed', null, null, {
+        price_1_month:   settingsMap['price_1_month'],
+        price_3_months:  settingsMap['price_3_months'],
+        price_6_months:  settingsMap['price_6_months'],
+        price_12_months: settingsMap['price_12_months'],
+      })
       return Response.json(
         { error: 'Plan prices are misconfigured. Please contact support.' },
         { status: 500 }
@@ -146,24 +102,18 @@ export async function GET() {
       payments_enabled:  settingsMap['payments_enabled']  !== 'false',
       coupons_enabled:   settingsMap['coupons_enabled']   !== 'false',
       referrals_enabled: settingsMap['referrals_enabled'] !== 'false',
-
-      // Naira amounts — for display only
       prices: {
         '1_month':   price1Month   / 100,
         '3_months':  price3Months  / 100,
         '6_months':  price6Months  / 100,
         '12_months': price12Months / 100,
       },
-
-      // Kobo amounts — pass these directly to /api/payments/initialize
-      // Never re-multiply the naira values — prevents rounding mismatch
       prices_kobo: {
         '1_month':   price1Month,
         '3_months':  price3Months,
         '6_months':  price6Months,
         '12_months': price12Months,
       },
-
       plan_enabled: {
         '1_month':   settingsMap['plan_1_month_enabled']   !== 'false',
         '3_months':  settingsMap['plan_3_months_enabled']  !== 'false',
@@ -173,17 +123,10 @@ export async function GET() {
     })
 
   } catch (err: any) {
-    await logError(
-      'PLAN_SETTINGS_UNHANDLED',
-      err.message,
-      err.stack ?? null,
-      null,
-      null
-    )
+    await logError('PLAN_SETTINGS_UNHANDLED', err.message, err.stack ?? null, null, null)
     return Response.json(
       { error: 'An unexpected error occurred. Please try again.' },
       { status: 500 }
     )
   }
-        }
-        
+       }
