@@ -2,133 +2,101 @@
 
 import { useState, useEffect } from 'react'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type SettingValue = string | number | boolean
-type SettingsMap = Record<string, SettingValue>
-
-// ─── Settings Page ─────────────────────────────────────────────────────────────
+// ─── Configuration Map: Maps raw DB keys to readable UI labels ──────────────
+const SETTING_LABELS: Record<string, string> = {
+  price_1_month: 'Price: 1 Month (Naira)',
+  price_3_months: 'Price: 3 Months (Naira)',
+  price_6_months: 'Price: 6 Months (Naira)',
+  price_12_months: 'Price: 12 Months (Naira)',
+  daily_question_limit: 'Daily Question Limit',
+  demo_duration_days: 'Demo Duration (Days)',
+  free_tier_daily_limit: 'Free Tier Daily Limit',
+  support_whatsapp: 'Support WhatsApp Number',
+  maintenance_message: 'Maintenance Message',
+  // ... any others will default to their key name
+}
 
 export default function AdminSettingsPage() {
-  const [settings, setSettings] = useState<SettingsMap>({})
+  const [settings, setSettings] = useState<Record<string, any>>({})
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
 
   useEffect(() => {
-    fetchSettings()
+    fetch('/api/admin/settings')
+      .then(res => res.json())
+      .then(data => setSettings(data.settings))
+      .finally(() => setLoading(false))
   }, [])
 
-  const fetchSettings = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/admin/settings')
+  const handleUpdate = async (key: string, value: any) => {
+    const res = await fetch('/api/admin/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: { [key]: value } }),
+    })
+    if (res.ok) {
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setSettings(data.settings)
-    } catch (err: any) {
-      setError(err.message || 'Failed to load settings')
-    } finally {
-      setLoading(false)
+      setSettings(prev => ({ ...prev, ...data.updated }))
     }
   }
 
-  const handleUpdate = async (key: string, value: SettingValue) => {
-    setSaving(true)
-    setError('')
-    try {
-      const res = await fetch('/api/admin/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates: { [key]: value } }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      
-      setSettings((prev) => ({ ...prev, ...data.updated }))
-      setMessage('Setting updated')
-      setTimeout(() => setMessage(''), 2000)
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
+  if (loading) return <div style={{ padding: 20 }}>Loading settings...</div>
+
+  // Filter out the calculated fields (the _naira ones) from the list
+  const allKeys = Object.keys(settings).filter(k => !k.endsWith('_naira'))
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-      <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, marginBottom: 20 }}>Platform Settings</h1>
-
-      {error && <div style={{ background: '#fee2e2', padding: '10px', borderRadius: 8, color: '#991b1b', marginBottom: 20 }}>{error}</div>}
-      {message && <div style={{ background: '#dcfce7', padding: '10px', borderRadius: 8, color: '#166534', marginBottom: 20 }}>{message}</div>}
-
-      {loading ? (
-        <p>Loading settings...</p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* Example: Boolean Toggle */}
-          <SettingToggle 
-            label="Maintenance Mode" 
-            value={settings.maintenance_mode as boolean} 
-            onChange={(v) => handleUpdate('maintenance_mode', v)} 
-          />
-
-          {/* Example: Number Input (Price) */}
-          <SettingInput 
-            label="1 Month Plan Price (Naira)" 
-            value={settings.price_1_month_naira as number} 
-            onChange={(v) => handleUpdate('price_1_month', v)} 
-          />
-
-          <SettingInput 
-            label="Daily Question Limit" 
-            value={settings.daily_question_limit as number} 
-            onChange={(v) => handleUpdate('daily_question_limit', v)} 
-          />
-
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Components ──────────────────────────────────────────────────────────────
-
-function SettingToggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px', background: '#f8fafc', borderRadius: 8 }}>
-      <span>{label}</span>
-      <input 
-        type="checkbox" 
-        checked={value} 
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ cursor: 'pointer', transform: 'scale(1.5)' }}
-      />
-    </div>
-  )
-}
-
-function SettingInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  const [temp, setTemp] = useState(value)
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '16px', background: '#f8fafc', borderRadius: 8 }}>
-      <label style={{ fontSize: 13, color: '#64748b' }}>{label}</label>
-      <div style={{ display: 'flex', gap: 10 }}>
-        <input 
-          type="number" 
-          value={temp} 
-          onChange={(e) => setTemp(Number(e.target.value))}
-          style={{ padding: '8px', borderRadius: 4, border: '1px solid #cbd5e1', flex: 1 }}
-        />
-        <button 
-          onClick={() => onChange(temp)}
-          style={{ padding: '8px 16px', background: '#0f172a', color: 'white', borderRadius: 4, cursor: 'pointer' }}
-        >
-          Save
-        </button>
+      <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, marginBottom: 20 }}>Global Platform Settings</h1>
+      
+      <div style={{ display: 'grid', gap: '20px' }}>
+        {allKeys.sort().map(key => (
+          <div key={key} style={{ padding: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 600, color: '#475569', textTransform: 'capitalize' }}>
+              {SETTING_LABELS[key] || key.replace(/_/g, ' ')}
+            </label>
+            
+            <SettingControl 
+              keyName={key} 
+              value={settings[key]} 
+              onChange={(val) => handleUpdate(key, val)} 
+            />
+          </div>
+        ))}
       </div>
     </div>
   )
+}
+
+function SettingControl({ keyName, value, onChange }: any) {
+  // Boolean Toggles
+  if (typeof value === 'boolean') {
+    return (
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} style={{ transform: 'scale(1.5)' }} />
+    )
   }
+
+  // Number / Price Inputs
+  if (typeof value === 'number' || keyName.includes('price')) {
+    const isPrice = keyName.includes('price')
+    return (
+      <div style={{ display: 'flex', gap: 10 }}>
+        <input 
+          type="number" 
+          defaultValue={isPrice ? value / 100 : value} // Assuming API returns raw kobo if logic matches
+          onBlur={(e) => onChange(Number(e.target.value))}
+          style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
+        />
+      </div>
+    )
+  }
+
+  // String Inputs
+  return (
+    <input 
+      type="text" 
+      defaultValue={value} 
+      onBlur={(e) => onChange(e.target.value)}
+      style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: 4, width: '100%' }}
+    />
+  )
+}
