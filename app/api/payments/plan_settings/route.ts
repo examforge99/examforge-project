@@ -38,16 +38,32 @@ async function logError(
   clerk_user_id?: string | null,
   metadata?: Record<string, unknown> | null
 ) {
-  await supabaseAdmin
-    .from('error_logs')
-    .insert({
-      error_code,
-      message,
-      stack_trace: stack_trace ?? null,
-      clerk_user_id: clerk_user_id ?? null,
-      metadata: metadata ?? null,
-    })
-    .catch(() => {}) // never throw from logging
+  
+  async function logError(
+  error_code: string,
+  message: string,
+  stack_trace?: string | null,
+  clerk_user_id?: string | null,
+  metadata?: Record<string, unknown> | null
+) {
+async function logError(
+  error_code: string,
+  message: string,
+  stack_trace?: string | null,
+  clerk_user_id?: string | null,
+  metadata?: Record<string, unknown> | null
+) {
+  try {
+    await supabaseAdmin
+      .from('error_logs')
+      .insert({
+        error_code,
+        message,
+        stack_trace: stack_trace ?? null,
+        clerk_user_id: clerk_user_id ?? null,
+        metadata: metadata ?? null,
+      })
+  } catch (_) {}
 }
 
 // ── Route ────────────────────────────────────────────────────────────────────
