@@ -5,6 +5,27 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Student {
+  clerk_user_id: string
+  full_name: string | null
+  email: string | null
+  exam_type: string | null
+}
+
+interface Payment {
+  id: string
+  transaction_id: string
+  status: string
+  plan_name: string
+  currency: string
+  amount_kobo: number
+  amount_naira: number
+  created_at: string
+  student: Student
+}
+
 // ─── Admin Auth Guard ─────────────────────────────────────────────────────────
 
 async function verifyAdmin(userId: string): Promise<boolean> {
@@ -154,7 +175,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Enrich payments with user details + naira conversion
-    let enrichedPayments = (payments ?? []).map((payment: {
+    let enrichedPayments: Payment[] = (payments ?? []).map((payment: {
       id: string
       user_id: string
       amount: number
@@ -176,9 +197,9 @@ export async function GET(req: NextRequest) {
       student: usersMap[payment.user_id]
         ? {
             clerk_user_id: payment.user_id,
-            full_name: usersMap[payment.user_id].full_name,
-            email: usersMap[payment.user_id].email,
-            exam_type: usersMap[payment.user_id].exam_type,
+            full_name: (usersMap[payment.user_id].full_name as string | null),
+            email: (usersMap[payment.user_id].email as string | null),
+            exam_type: (usersMap[payment.user_id].exam_type as string | null),
           }
         : { clerk_user_id: payment.user_id, full_name: null, email: null, exam_type: null },
     }))
@@ -193,18 +214,11 @@ export async function GET(req: NextRequest) {
     if (exportCsv) {
       const csvRows = [
         ['Date', 'Student Name', 'Email', 'Plan', 'Amount (Naira)', 'Status', 'Transaction ID'].map(escapeCsv).join(','),
-        ...enrichedPayments.map((p: {
-          created_at: string
-          student: { full_name: unknown; email: unknown }
-          plan_name: string
-          amount_naira: number
-          status: string
-          transaction_id: string
-        }) =>
+        ...enrichedPayments.map((p: Payment) =>
           [
             escapeCsv(new Date(p.created_at).toLocaleDateString('en-NG')),
-            escapeCsv(p.student.full_name ?? 'Unknown'),
-            escapeCsv(p.student.email ?? 'Unknown'),
+            escapeCsv(p.student?.full_name ?? 'Unknown'),
+            escapeCsv(p.student?.email ?? 'Unknown'),
             escapeCsv(p.plan_name ?? ''),
             escapeCsv(p.amount_naira.toFixed(2)),
             escapeCsv(p.status),
@@ -284,3 +298,4 @@ export async function GET(req: NextRequest) {
     )
   }
           }
+      
