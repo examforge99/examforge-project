@@ -15,12 +15,16 @@ const isPublicRoute = createRouteMatcher([
   '/api/webhooks/clerk',
   '/api/webhooks/paystack',
   '/api/payments/verify(.*)',
-  '/api/health(.*)',
+  '/api/flags(.*)',
 ])
 
 const isAdminRoute = createRouteMatcher([
   '/admin(.*)',
   '/api/admin(.*)',
+])
+
+const isSystemHealthRoute = createRouteMatcher([
+  '/api/system/health(.*)',
 ])
 
 const isOnboardingRoute = createRouteMatcher(['/onboarding(.*)'])
@@ -29,6 +33,7 @@ const isSubscribeRoute  = createRouteMatcher(['/subscribe(.*)'])
 const isApiRoute        = createRouteMatcher(['/api(.*)'])
 
 // ─── Supabase Admin Client ────────────────────────────────────────────────────
+// Created once at module level — not on every request
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -52,30 +57,48 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   const { userId } = await auth()
   const { pathname } = req.nextUrl
 
-  // ── 1. Public routes ─────────────────────────────────────────────────────
+  // ── 1. Public routes — always allow through ──────────────────────────────
   if (isPublicRoute(req)) {
     return NextResponse.next()
   }
 
-  // ── 2. Not signed in → redirect to login ────────────────────────────────
+  // ── 2. System health — protected by secret header, not Clerk ────────────
+  // Admin or monitoring tools access this via x-health-check-secret header
+  if (isSystemHealthRoute(req)) {
+    const secret = req.headers.get('x-health-check-secret')
+    if (secret === process.env.HEALTH_CHECK_SECRET) {
+      return NextResponse.next()
+    }
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // ── 3. Not signed in → redirect to login ────────────────────────────────
   if (!userId) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('redirect_url', req.url)
     return NextResponse.redirect(loginUrl)
   }
 
-  // ── 3. API routes — handle their own auth ────────────────────────────────
+  // ── Authenticated from here ──────────────────────────────────────────────
+
+  // ── 4. API routes — let them handle their own auth ───────────────────────
+  // Don't apply page-level gates to API calls
+  // An expired session mid-session should return JSON not HTML redirect
   if (isApiRoute(req)) {
     return NextResponse.next()
   }
 
-  // ── 4. Fetch user from Supabase ──────────────────────────────────────────
+  // ── 5. Fetch user from Supabase ──────────────────────────────────────────
+  // Check if user exists in our DB (webhook may not have fired yet)
   const { data: user, error } = await supabase
     .from('users')
     .select('subscription_status, onboarding_completed, role')
     .eq('clerk_user_id', userId)
     .single()
 
+  // ── 6. User not in DB yet ────────────────────────────────────────────────
+  // Clerk has them but webhook hasn't created Supabase row yet
+  // Only allow them through to onboarding — block everything else
   if (error || !user) {
     if (!isOnboardingRoute(req)) {
       return NextResponse.redirect(new URL('/onboarding', req.url))
@@ -84,9 +107,11 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   }
 
   const { subscription_status, onboarding_completed, role } = user
-  const isAdmin = role === 'admin'
+  const isAdmin   = role === 'admin'
+  const isStudent = role === 'student' || role === 'viewer'
 
-  // ── 5. Maintenance mode ──────────────────────────────────────────────────
+  // ── 7. Maintenance mode ──────────────────────────────────────────────────
+  // Read from settings table — admins bypass maintenance mode
   const { data: maintenanceSetting } = await supabase
     .from('settings')
     .select('setting_value')
@@ -94,8 +119,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     .single()
 
   const isMaintenanceMode =
-    maintenanceSetting?.setting_value === 'true' ||
-    maintenanceSetting?.setting_value === true
+    maintenanceSetting?.setting_value === 'true'
 
   if (isMaintenanceMode && !isAdmin) {
     if (pathname !== '/maintenance') {
@@ -104,7 +128,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     return NextResponse.next()
   }
 
-  // ── 6. Banned users ──────────────────────────────────────────────────────
+  // ── 8. Banned users → /banned only ──────────────────────────────────────
   if (subscription_status === 'banned') {
     if (!isBannedRoute(req)) {
       return NextResponse.redirect(new URL('/banned', req.url))
@@ -112,36 +136,20 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     return NextResponse.next()
   }
 
-  // ── 7. Admin route protection ─────────────────────────────────────────────
+  // ── 9. Admin route protection ────────────────────────────────────────────
   // Only admins can access /admin/* and /api/admin/*
-  // Non-admins hitting /admin get sent to /dashboard
+  // Students hitting /admin get sent to /dashboard
   if (isAdminRoute(req)) {
     if (!isAdmin) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
+    // Admin confirmed — allow through
     return NextResponse.next()
   }
 
-  // ── 8. Admin hitting non-admin pages ─────────────────────────────────────
-  // Admin has completed onboarding — send them to /admin not /dashboard
-  // This handles: admin logs in → goes to /admin automatically
-  // Admin can still manually visit /dashboard if they want to see student view
-  if (isAdmin && onboarding_completed) {
-    // Only redirect if they are hitting the root dashboard redirect points
-    // Don't redirect if they are already on a student page intentionally
-    const isDashboardRedirectPoint =
-      pathname === '/' ||
-      isOnboardingRoute(req) ||
-      isSubscribeRoute(req)
-
-    if (isDashboardRedirectPoint) {
-      return NextResponse.redirect(new URL('/admin', req.url))
-    }
-    // Admin visiting student pages (/dashboard, /practice etc) — allow through
-    return NextResponse.next()
-  }
-
-  // ── 9. Onboarding gate ───────────────────────────────────────────────────
+  // ── 10. Onboarding gate ──────────────────────────────────────────────────
+  // User exists in DB but hasn't completed onboarding
+  // Must complete onboarding before accessing any app page
   if (!onboarding_completed) {
     if (!isOnboardingRoute(req)) {
       return NextResponse.redirect(new URL('/onboarding', req.url))
@@ -149,7 +157,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     return NextResponse.next()
   }
 
-  // ── 10. Already onboarded → redirect away from /onboarding ──────────────
+  // ── 11. Already onboarded → redirect away from /onboarding ──────────────
   if (onboarding_completed && isOnboardingRoute(req)) {
     // Admin → /admin, student → /dashboard
     return NextResponse.redirect(
@@ -157,28 +165,37 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     )
   }
 
-  // ── 11. Subscription gate ────────────────────────────────────────────────
-  const hasAccess =
-    subscription_status === 'active' ||
-    subscription_status === 'grace_period' ||
-    subscription_status === 'demo'
+  // ── 12. Subscription gate — students only ────────────────────────────────
+  // Admins always have full access — never gate them
+  // Students need active/demo/grace_period subscription
+  if (isStudent) {
+    const hasAccess =
+      subscription_status === 'active' ||
+      subscription_status === 'grace_period' ||
+      subscription_status === 'demo'
 
-  if (!hasAccess) {
-    if (!isSubscribeRoute(req)) {
-      return NextResponse.redirect(new URL('/subscribe', req.url))
+    if (!hasAccess) {
+      if (!isSubscribeRoute(req)) {
+        return NextResponse.redirect(new URL('/subscribe', req.url))
+      }
+      return NextResponse.next()
     }
-    return NextResponse.next()
+
+    // Active subscriber hitting /subscribe → send to dashboard
+    if (hasAccess && isSubscribeRoute(req)) {
+      return NextResponse.redirect(new URL('/dashboard', req.url))
+    }
   }
 
-  // ── 12. Active subscriber hitting /subscribe → send home ─────────────────
-  if (hasAccess && isSubscribeRoute(req)) {
-    // Admin → /admin, student → /dashboard
-    return NextResponse.redirect(
-      new URL(isAdmin ? '/admin' : '/dashboard', req.url)
-    )
+  // ── 13. Admin visiting /subscribe → send to /admin ──────────────────────
+  if (isAdmin && isSubscribeRoute(req)) {
+    return NextResponse.redirect(new URL('/admin', req.url))
   }
 
-  // ── 13. All checks passed ─────────────────────────────────────────────────
+  // ── 14. All checks passed — allow through ────────────────────────────────
+  // Admin can visit /dashboard to see student view — allowed
+  // Admin can visit all student pages — allowed
+  // Students can visit their own pages — allowed
   return NextResponse.next()
 })
 
