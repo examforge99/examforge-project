@@ -44,7 +44,6 @@ interface NewsItem {
   source_url: string | null
   created_at: string
 }
-
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
 const Icons = {
@@ -83,7 +82,7 @@ const Icons = {
       <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   ),
-  TrendingUp: () => (
+TrendingUp: () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
     </svg>
@@ -117,7 +116,7 @@ function DashboardSkeleton() {
         <Skeleton width="55%" height={28} radius={6} />
         <div style={{ marginTop: 8 }}><Skeleton width="35%" height={13} /></div>
       </div>
-
+      
       {/* Stats row skeleton */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
         {[1,2,3].map((i) => (
@@ -156,8 +155,7 @@ function DashboardSkeleton() {
           ))}
         </div>
       </div>
-
-      {/* Performance skeleton */}
+{/* Performance skeleton */}
       <div style={{ background: "#ffffff", border: "1px solid rgba(15,23,42,0.08)", borderRadius: 14, padding: 20, marginBottom: 20 }}>
         <div style={{ marginBottom: 16 }}><Skeleton width="30%" height={20} radius={4} /></div>
         {[1,2,3,4].map((i) => (
@@ -189,8 +187,7 @@ function DashboardSkeleton() {
       </div>
     </div>
   )
-}
-
+                     }
 // ─── Accuracy bar ─────────────────────────────────────────────────────────────
 
 function AccuracyBar({ subject, accuracy }: { subject: string; accuracy: number }) {
@@ -199,7 +196,7 @@ function AccuracyBar({ subject, accuracy }: { subject: string; accuracy: number 
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
         <span style={{ fontSize: 13, color: '#475569', fontFamily: 'system-ui, sans-serif' }}>{subject}</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color, fontFamily: 'system-ui, sans-serif' }}>{accuracy}%</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color, fontFamily: 'system-ui, sans-serif' }}>{Math.round(accuracy)}%</span>
       </div>
       <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{
@@ -247,8 +244,7 @@ function QuickAction({
         gap: 10,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = accent
-        e.currentTarget.style.boxShadow = `0 4px 20px ${accent}20`
+        e.currentTarget.style.borderColor = accent e.currentTarget.style.boxShadow = `0 4px 20px ${accent}20`
         e.currentTarget.style.transform = 'translateY(-2px)'
       }}
       onMouseLeave={(e) => {
@@ -299,8 +295,7 @@ export default function DashboardPage() {
           fetch(`/api/student/context?user_id=${userId}`),
           fetch('/api/news'),
         ])
-
-        if (!contextRes.ok) throw new Error('Failed to load dashboard')
+if (!contextRes.ok) throw new Error('Failed to load dashboard')
         const contextData = await contextRes.json()
         setData(contextData)
 
@@ -350,6 +345,28 @@ export default function DashboardPage() {
   const formatDate = (date: string) =>
     new Date(date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
 
+  // Error State Guard
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#faf9f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', color: '#dc2626' }}>
+          <Icons.AlertTriangle />
+          <div style={{ marginTop: 8, fontWeight: 500 }}>{error}</div>
+        </div>
+      </div>
+    )
+  }
+
+  // Full Page Loading Guard
+  if (loading && !data) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#faf9f7', padding: '24px 16px 100px' }}>
+        <style dangerouslySetInnerHTML={{ __html: `@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }` }} />
+        <DashboardSkeleton />
+      </div>
+    )
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -361,28 +378,20 @@ export default function DashboardPage() {
 
         {/* ── Header ── */}
         <div style={{ marginBottom: 24 }}>
-          {loading ? (
-            <Skeleton width="60%" height={28} />
-          ) : (
-            <h1 style={{
-              fontFamily: 'Georgia, serif',
-              fontSize: 26,
-              fontWeight: 700,
-              color: '#0f172a',
-              margin: '0 0 4px',
-              letterSpacing: '-0.3px',
-            }}>
-              Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {firstName}
-            </h1>
-          )}
-          {loading ? (
-            <Skeleton width="40%" height={14} />
-          ) : (
-            <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
-              {data?.user?.exam_type} preparation
-              {(data?.streak?.current_streak_days ?? 0) > 0 && ` · ${data?.streak?.current_streak_days ?? 0} day streak`}
-            </p>
-          )}
+          <h1 style={{
+            fontFamily: 'Georgia, serif',
+            fontSize: 26,
+            fontWeight: 700,
+            color: '#0f172a',
+            margin: '0 0 4px',
+            letterSpacing: '-0.3px',
+          }}>
+            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {firstName}
+          </h1>
+          <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+            {data?.user?.exam_type} preparation
+            {(data?.streak?.current_streak_days ?? 0) > 0 && ` · ${data?.streak?.current_streak_days ?? 0} day streak`}
+          </p>
         </div>
 
         {/* ── AI Welcome message ── */}
@@ -433,23 +442,23 @@ export default function DashboardPage() {
           {[
             {
               label: 'Questions',
-              value: loading ? null : (data?.milestones?.total_questions_answered ?? 0).toLocaleString(),
+              value: (data?.milestones?.total_questions_answered ?? 0).toLocaleString(),
               icon: Icons.BookOpen,
               color: '#1d4ed8',
             },
             {
               label: 'Accuracy',
-              value: loading ? null : `${data?.milestones?.overall_accuracy ?? 0}%`,
+              value: `${Math.round(data?.milestones?.overall_accuracy ?? 0)}%`,
               icon: Icons.Target,
               color: '#16a34a',
             },
             {
               label: 'Streak',
-              value: loading ? null : `${data?.streak?.current_streak_days ?? 0}d`,
+              value: `${data?.streak?.current_streak_days ?? 0}d`,
               icon: Icons.Flame,
               color: '#d97706',
             },
-          ].map(({ label, value, icon: Icon, color }) => (
+      ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} style={{
               background: '#ffffff',
               border: '1px solid rgba(15,23,42,0.08)',
@@ -458,23 +467,19 @@ export default function DashboardPage() {
               textAlign: 'center',
             }}>
               <div style={{ color, display: 'flex', justifyContent: 'center', marginBottom: 6 }}><Icon /></div>
-              {loading ? (
-                <Skeleton height={20} width="60%" />
-              ) : (
-                <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Georgia, serif', color: '#0f172a' }}>{value}</div>
-              )}
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Georgia, serif', color: '#0f172a' }}>{value}</div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{label}</div>
             </div>
           ))}
         </div>
 
         {/* ── Exam countdown ── */}
-        {!loading && data?.exam_info && (
+        {data?.exam_info && (
           <div style={{
             background: '#0f172a',
             borderRadius: 14,
             padding: '20px',
-            marginBottom: 20,
+            marginBottom: 24,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -503,268 +508,129 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
-        {/* ── Neglected subjects warning ── */}
-        {!loading && neglected.length > 0 && (
+                {/* ── Neglected Subjects / Weak Topics Alert ── */}
+        {(neglected.length > 0 || weakTopics.length > 0) && (
           <div style={{
-            background: '#fff7ed',
-            border: '1px solid #fed7aa',
-            borderRadius: 12,
-            padding: '14px 16px',
-            marginBottom: 20,
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: 14,
+            padding: '16px 20px',
+            marginBottom: 24,
             display: 'flex',
             alignItems: 'flex-start',
-            gap: 10,
+            gap: 12,
           }}>
-            <span style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }}><Icons.AlertTriangle /></span>
+            <div style={{ color: '#dc2626', marginTop: 2 }}>
+              <Icons.AlertTriangle />
+            </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 2 }}>
-                You have not studied {neglected.join(', ')} in 3+ days
-              </div>
-              <div style={{ fontSize: 12, color: '#b45309' }}>
-                These subjects are drifting. Every day away makes the comeback harder.
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#991b1b', marginBottom: 4 }}>Recommended Focus</div>
+              <div style={{ fontSize: 13, color: '#b91c1c', lineHeight: 1.5 }}>
+                {neglected.length > 0
+                  ? `You haven't practiced ${neglected.join(' or ')} recently. Time for a quick session!`
+                  : `Your accuracy in ${weakTopics[0]?.topic} is low (${Math.round(weakTopics[0]?.accuracy)}%). Let's improve it!`
+                }
               </div>
             </div>
           </div>
         )}
 
-        {/* ── Quick actions ── */}
+        {/* ── Quick Actions ── */}
         <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: '#0f172a', margin: '0 0 14px' }}>
-            Practice
+          <h2 style={{ fontSize: 12, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', fontWeight: 600, marginBottom: 12 }}>
+            Quick Actions
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-            <QuickAction
-              label="CBT Session"
-              description={`Full ${data?.user?.exam_type ?? 'JAMB'} combo with 2-hour timer`}
-              href="/practice/session"
-              accent="#1d4ed8"
-              icon={Icons.Clock}
+            <QuickAction 
+              label="Practice" 
+              description="Topic-by-topic questions with instant feedback." 
+              href="/practice" 
+              accent="#1d4ed8" 
+              icon={Icons.Zap} 
             />
-            <QuickAction
-              label="Free Practice"
-              description="Pick subject, topic, and question count"
-              href="/practice/select"
-              accent="#16a34a"
-              icon={Icons.BookOpen}
-            />
-            <QuickAction
-              label="Mock Exam"
-              description="Custom subjects with your own time limit"
-              href="/practice/mock"
-              accent="#7c3aed"
-              icon={Icons.Target}
+            <QuickAction 
+              label="Mock Exam" 
+              description="Full-length timed exam simulation." 
+              href="/mock" 
+              accent="#d97706" 
+              icon={Icons.Clock} 
             />
           </div>
         </div>
-
-        {/* ── Performance by subject ── */}
-        {!loading && subjects.length > 0 && (
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14,
-            padding: '20px',
-            marginBottom: 20,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: '#0f172a', margin: 0 }}>
-                Performance
-              </h2>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-                <Icons.TrendingUp /> Overall {data?.milestones?.overall_accuracy ?? 0}%
-              </span>
+        {/* ── Performance Summary ── */}
+        <div style={{ background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', borderRadius: 14, padding: '20px', marginBottom: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia, serif', color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icons.TrendingUp /> Subject Performance
+          </h2>
+          {subjects.length > 0 ? (
+            subjects.map(([subject, accuracy]) => (
+              <AccuracyBar key={subject} subject={subject} accuracy={accuracy} />
+            ))
+          ) : (
+            <div style={{ fontSize: 13, color: '#64748b', textAlign: 'center', padding: '20px 0' }}>
+              No performance data yet. Start a practice session!
             </div>
-            {subjects.map(([subject, accuracy]) => (
-              <AccuracyBar key={subject} subject={subject} accuracy={Math.round(accuracy as number)} />
+          )}
+        </div>
+
+        {/* ── Recent Sessions ── */}
+        <div style={{ background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', borderRadius: 14, padding: '20px', marginBottom: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia, serif', color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icons.Clock /> Recent Sessions
+          </h2>
+          {recentSessions.length > 0 ? (
+            recentSessions.map((session, i) => (
+              <div key={i} style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                padding: '12px 14px', 
+                background: '#faf9f7', 
+                borderRadius: 10, 
+                marginBottom: i === recentSessions.length - 1 ? 0 : 8 
+              }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>{session.subject}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>{formatDate(session.date)}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: session.score >= 70 ? '#16a34a' : session.score >= 50 ? '#d97706' : '#dc2626' }}>
+                    {Math.round(session.score)}%
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>{session.total_questions} qs</div>
+                </div>
+              </div>
+              ))
+          ) : (
+            <div style={{ fontSize: 13, color: '#64748b', textAlign: 'center', padding: '20px 0' }}>
+              No recent sessions found.
+            </div>
+          )}
+        </div>
+
+        {/* ── News / Announcements ── */}
+        {news.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 12, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em', fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icons.Newspaper /> Latest Updates
+            </h2>
+            {news.map(item => (
+              <div key={item.id} style={{ background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', borderRadius: 14, padding: '16px', marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600, marginBottom: 6 }}>{formatDate(item.created_at)}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'Georgia, serif', color: '#0f172a', marginBottom: 6 }}>{item.headline}</div>
+                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>{item.body}</div>
+                {item.source_url && (
+                  <a href={item.source_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 12, fontSize: 12, color: '#1d4ed8', textDecoration: 'none', fontWeight: 600 }}>
+                    Read more →
+                  </a>
+                )}
+              </div>
             ))}
           </div>
         )}
 
-        {/* ── Weak topics ── */}
-        {!loading && weakTopics.length > 0 && (
-          <div style={{
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 14,
-            padding: '20px',
-            marginBottom: 20,
-          }}>
-            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: '#0f172a', margin: '0 0 14px' }}>
-              Needs attention
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {weakTopics.map((t, i) => (
-                <div key={i} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: '#ffffff',
-                  borderRadius: 10,
-                  padding: '12px 14px',
-                }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{t.topic}</div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{t.subject}</div>
-                  </div>
-                  <span style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: '#dc2626',
-                    background: '#fee2e2',
-                    padding: '3px 10px',
-                    borderRadius: 20,
-                  }}>
-                    {t.accuracy}%
-                  </span>
-                </div>
-              ))}
-            </div>
-            <button
-              onClick={() => router.push('/practice/select')}
-              style={{
-                width: '100%',
-                marginTop: 14,
-                padding: '10px',
-                background: '#dc2626',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: 10,
-                fontSize: 13,
-                fontFamily: 'system-ui, sans-serif',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-              }}
-            >
-              Practice weak topics <Icons.ArrowRight />
-            </button>
-          </div>
-        )}
-
-        {/* ── Recent sessions ── */}
-        {!loading && recentSessions.length > 0 && (
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14,
-            padding: '20px',
-            marginBottom: 20,
-          }}>
-            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: '#0f172a', margin: '0 0 14px' }}>
-              Recent sessions
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {recentSessions.map((session, i) => {
-                const pct = session.total_questions > 0
-                  ? Math.round((session.score / session.total_questions) * 100)
-                  : 0
-                const color = pct >= 70 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626'
-                return (
-                  <div key={i} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    background: '#faf9f7',
-                    borderRadius: 10,
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{session.subject}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>{formatDate(session.date)}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color, fontFamily: 'Georgia, serif' }}>{pct}%</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{session.score}/{session.total_questions}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ── News ── */}
-        {news.length > 0 && (
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14,
-            padding: '20px',
-            marginBottom: 20,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <span style={{ color: '#1d4ed8' }}><Icons.Newspaper /></span>
-              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: '#0f172a', margin: 0 }}>
-                Exam news
-              </h2>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {news.slice(0, 3).map((item) => (
-                <div key={item.id} style={{
-                  paddingBottom: 12,
-                  borderBottom: '1px solid rgba(15,23,42,0.06)',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <span style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: '#1d4ed8',
-                      background: '#dbeafe',
-                      padding: '1px 7px',
-                      borderRadius: 10,
-                    }}>
-                      {item.exam_type}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{formatDate(item.created_at)}</span>
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 3, lineHeight: 1.4 }}>
-                    {item.headline}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-                    {item.body.substring(0, 120)}{item.body.length > 120 ? '...' : ''}
-                  </div>
-                  {item.source_url && (
-                    <a href={item.source_url} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600, textDecoration: 'none', marginTop: 4, display: 'inline-block' }}>
-                      Read more
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Error state */}
-        {error && (
-          <div style={{
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 12,
-            padding: '16px',
-            color: '#dc2626',
-            fontSize: 14,
-            textAlign: 'center',
-          }}>
-            {error}
-            <button
-              onClick={() => window.location.reload()}
-              style={{ display: 'block', margin: '10px auto 0', padding: '6px 16px', background: '#dc2626', color: '#ffffff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}
-            >
-              Refresh
-            </button>
-          </div>
-        )}
       </div>
-
-      <style>{`
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
     </div>
   )
-                       }
+        }
+        
