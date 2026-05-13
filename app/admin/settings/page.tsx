@@ -99,6 +99,135 @@ function HoverCard({ children, isDanger = false, isMobile = false }: { children:
   )
 }
 
+function SettingToggle({
+  settingKey, label, description, isMaintenance, value, isPending, onChange
+}: {
+  settingKey: string, label: string, description: string, isMaintenance?: boolean, value: boolean, isPending: boolean, onChange: (k: keyof SettingsData, v: boolean) => void
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '14px', color: isMaintenance && value ? '#dc2626' : '#0f172a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isMaintenance && value && <WarningTriangleSVG />}
+          {label}
+        </div>
+        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', lineHeight: 1.5 }}>{description}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+        <div 
+          onClick={() => onChange(settingKey as keyof SettingsData, !value)}
+          style={{
+            width: '44px',
+            height: '24px',
+            backgroundColor: value ? (isMaintenance ? '#dc2626' : '#1d4ed8') : '#e2e8f0',
+            borderRadius: '99px',
+            position: 'relative',
+            cursor: 'pointer',
+            transition: 'background-color 0.2s ease'
+          }}
+        >
+          <div style={{
+            width: '20px',
+            height: '20px',
+            backgroundColor: '#fff',
+            borderRadius: '50%',
+            position: 'absolute',
+            top: '2px',
+            left: value ? '22px' : '2px',
+            transition: 'left 0.2s ease',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+          }} />
+        </div>
+        {isPending && (
+          <div style={{ fontSize: '11px', color: isMaintenance ? '#dc2626' : '#1d4ed8', fontWeight: 500 }}>
+            Unsaved change
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SettingInput({
+  settingKey, label, description, type, value, isPending, onChange, isMobile
+}: {
+  settingKey: string, label: string, description?: string, type: 'price' | 'number' | 'text', value: any, isPending: boolean, onChange: (k: keyof SettingsData, v: any) => void, isMobile: boolean
+}) {
+  const [isFocused, setIsFocused] = useState(false)
+  const [localError, setLocalError] = useState('')
+
+  const displayVal = (value === undefined || value === null) ? '' : 
+    (type === 'text' ? String(value) : Number(value).toLocaleString('en-US'))
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setLocalError('')
+
+    if (type === 'text') {
+      if (settingKey === 'support_whatsapp') {
+        if (val && !/^\d*$/.test(val)) return // Block non-digits immediately
+        if (val && (val.length < 10 || val.length > 13)) {
+          setLocalError('Number must be 10-13 digits')
+        }
+      }
+      onChange(settingKey as keyof SettingsData, val)
+      return
+    }
+
+    const unformatted = val.replace(/,/g, '').replace(/\D/g, '')
+    if (unformatted === '') {
+      onChange(settingKey as keyof SettingsData, 0)
+      return
+    }
+    onChange(settingKey as keyof SettingsData, parseInt(unformatted, 10))
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '16px' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>{label}</div>
+        {description && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{description}</div>}
+      </div>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'stretch' : 'flex-end', gap: '4px', minWidth: '220px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          backgroundColor: '#fff',
+          border: `1px solid ${isFocused ? '#1d4ed8' : 'rgba(15,23,42,0.15)'}`,
+          borderRadius: '8px',
+          padding: '0 12px',
+          height: '40px',
+          transition: 'border-color 0.2s',
+          width: '100%'
+        }}>
+          {type === 'price' && <span style={{ color: '#64748b', marginRight: '8px', fontSize: '14px' }}>₦</span>}
+          <input
+            type="text"
+            value={displayVal}
+            onChange={handleChange}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder={settingKey === 'support_whatsapp' ? '2348012345678' : ''}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              width: '100%',
+              outline: 'none',
+              textAlign: type === 'text' ? 'left' : 'right',
+              color: '#0f172a',
+              fontSize: '14px',
+              fontFamily: 'system-ui, sans-serif'
+            }}
+          />
+        </div>
+        {localError && <div style={{ fontSize: '11px', color: '#dc2626' }}>{localError}</div>}
+        {isPending && !localError && <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 500 }}>Unsaved change</div>}
+      </div>
+    </div>
+  )
+}
+
 // --- Main Page Component ---
 
 export default function AdminSettingsPage() {
@@ -130,7 +259,6 @@ export default function AdminSettingsPage() {
       const res = await fetch('/api/admin/settings')
       
       if (!res.ok) {
-        // If API route rejects them (e.g. session expired), boot them
         router.push('/dashboard')
         return
       }
@@ -138,7 +266,6 @@ export default function AdminSettingsPage() {
       const data = await res.json()
       const loadedSettings = { ...data.settings }
       
-      // Always convert prices: divide by 100 for display (kobo -> naira)
       PRICE_KEYS.forEach(key => {
         if (loadedSettings[key] !== undefined) {
           loadedSettings[key] = Math.round(loadedSettings[key] / 100)
@@ -150,7 +277,7 @@ export default function AdminSettingsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [router])
+  }, [router, PRICE_KEYS]) // Added PRICE_KEYS
 
   // Auth Guard & Init
   useEffect(() => {
@@ -159,9 +286,6 @@ export default function AdminSettingsPage() {
       router.push('/')
       return 
     }
-    
-    // Admin role is already verified by middleware.ts for this page route.
-    // We just need to load the data.
     loadSettings()
   }, [isLoaded, user, router, loadSettings])
 
@@ -199,7 +323,6 @@ export default function AdminSettingsPage() {
     setIsSaving(true)
 
     const updates = { ...pendingChanges }
-    // Always convert prices: multiply by 100 before saving (naira -> kobo)
     PRICE_KEYS.forEach(key => {
       if (updates[key as keyof SettingsData] !== undefined) {
         (updates as any)[key] = Number(updates[key as keyof SettingsData]) * 100
@@ -226,7 +349,7 @@ export default function AdminSettingsPage() {
     }
   }
 
-  // Common UI Renderers
+  // Component Builders (to keep the JSX clean below)
   const renderSectionHeader = (title: string, helperText?: string) => (
     <div style={{ marginBottom: '16px', marginTop: '24px' }}>
       <div style={{ 
@@ -248,138 +371,38 @@ export default function AdminSettingsPage() {
     </div>
   )
 
-  const renderToggle = (key: keyof SettingsData, label: string, description: string, isMaintenance = false) => {
+  const buildToggle = (key: keyof SettingsData, label: string, description: string, isMaintenance = false) => {
     const val = pendingChanges[key] !== undefined ? pendingChanges[key] : settings?.[key]
     const isPending = pendingChanges[key] !== undefined
-    const active = !!val
-
     return (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', color: isMaintenance && active ? '#dc2626' : '#0f172a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {isMaintenance && active && <WarningTriangleSVG />}
-            {label}
-          </div>
-          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', lineHeight: 1.5 }}>{description}</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-          <div 
-            onClick={() => setChange(key, !active)}
-            style={{
-              width: '44px',
-              height: '24px',
-              backgroundColor: active ? (isMaintenance ? '#dc2626' : '#1d4ed8') : '#e2e8f0',
-              borderRadius: '99px',
-              position: 'relative',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease'
-            }}
-          >
-            <div style={{
-              width: '20px',
-              height: '20px',
-              backgroundColor: '#fff',
-              borderRadius: '50%',
-              position: 'absolute',
-              top: '2px',
-              left: active ? '22px' : '2px',
-              transition: 'left 0.2s ease',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
-            }} />
-          </div>
-          {isPending && (
-            <div style={{ fontSize: '11px', color: isMaintenance ? '#dc2626' : '#1d4ed8', fontWeight: 500 }}>
-              Unsaved change
-            </div>
-          )}
-        </div>
-      </div>
+      <SettingToggle
+        key={key}
+        settingKey={key}
+        label={label}
+        description={description}
+        isMaintenance={isMaintenance}
+        value={!!val}
+        isPending={isPending}
+        onChange={setChange}
+      />
     )
   }
 
-  const renderInput = (
-    key: keyof SettingsData, 
-    label: string, 
-    description?: string, 
-    type: 'price' | 'number' | 'text' = 'number'
-  ) => {
-    const rawVal = pendingChanges[key] !== undefined ? pendingChanges[key] : settings?.[key]
+  const buildInput = (key: keyof SettingsData, label: string, description?: string, type: 'price' | 'number' | 'text' = 'number') => {
+    const val = pendingChanges[key] !== undefined ? pendingChanges[key] : settings?.[key]
     const isPending = pendingChanges[key] !== undefined
-
-    // For string, use as is. For numbers/prices, parse comma-formatted strings.
-    const displayVal = (rawVal === undefined || rawVal === null) ? '' : 
-      (type === 'text' ? String(rawVal) : Number(rawVal).toLocaleString('en-US'))
-
-    const [isFocused, setIsFocused] = useState(false)
-    const [localError, setLocalError] = useState('')
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value
-      setLocalError('')
-
-      if (type === 'text') {
-        if (key === 'support_whatsapp') {
-          if (val && !/^\d*$/.test(val)) return // Block non-digits immediately
-          if (val && (val.length < 10 || val.length > 13)) {
-            setLocalError('Number must be 10-13 digits')
-          }
-        }
-        setChange(key, val)
-        return
-      }
-
-      // Numeric parsing
-      const unformatted = val.replace(/,/g, '').replace(/\D/g, '')
-      if (unformatted === '') {
-        setChange(key, 0)
-        return
-      }
-      setChange(key, parseInt(unformatted, 10))
-    }
-
     return (
-      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '16px' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>{label}</div>
-          {description && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{description}</div>}
-        </div>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'stretch' : 'flex-end', gap: '4px', minWidth: '220px' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            backgroundColor: '#fff',
-            border: `1px solid ${isFocused ? '#1d4ed8' : 'rgba(15,23,42,0.15)'}`,
-            borderRadius: '8px',
-            padding: '0 12px',
-            height: '40px',
-            transition: 'border-color 0.2s',
-            width: '100%'
-          }}>
-            {type === 'price' && <span style={{ color: '#64748b', marginRight: '8px', fontSize: '14px' }}>₦</span>}
-            <input
-              type="text"
-              value={displayVal}
-              onChange={handleChange}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              placeholder={key === 'support_whatsapp' ? '2348012345678' : ''}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                width: '100%',
-                outline: 'none',
-                textAlign: type === 'text' ? 'left' : 'right',
-                color: '#0f172a',
-                fontSize: '14px',
-                fontFamily: 'system-ui, sans-serif'
-              }}
-            />
-          </div>
-          {localError && <div style={{ fontSize: '11px', color: '#dc2626' }}>{localError}</div>}
-          {isPending && !localError && <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 500 }}>Unsaved change</div>}
-        </div>
-      </div>
+      <SettingInput
+        key={key}
+        settingKey={key}
+        label={label}
+        description={description}
+        type={type}
+        value={val}
+        isPending={isPending}
+        onChange={setChange}
+        isMobile={isMobile}
+      />
     )
   }
 
@@ -416,6 +439,7 @@ export default function AdminSettingsPage() {
 
   return (
     <div style={{ backgroundColor: '#faf9f7', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' }}>
+      
       {/* Toast Notifications */}
       <div style={{ position: 'fixed', top: '24px', right: '24px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {toasts.map(t => (
@@ -515,6 +539,7 @@ export default function AdminSettingsPage() {
           })}
         </div>
 
+        
         {/* Tab Content Rendering */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
@@ -523,32 +548,32 @@ export default function AdminSettingsPage() {
             <>
               {renderSectionHeader('Payment Gateway', 'Controls whether students can make payments on the platform.')}
               <HoverCard isMobile={isMobile}>
-                {renderToggle('payments_enabled', 'Accept Payments', 'Enable or disable all payment processing')}
+                {buildToggle('payments_enabled', 'Accept Payments', 'Enable or disable all payment processing')}
               </HoverCard>
 
               {renderSectionHeader('Subscription Plans', 'Enable or disable individual plan options students can purchase.')}
               <HoverCard isMobile={isMobile}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  {renderToggle('plan_1_month_enabled', '1 Month Plan', 'Allow students to subscribe monthly')}
+                  {buildToggle('plan_1_month_enabled', '1 Month Plan', 'Allow students to subscribe monthly')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderToggle('plan_3_months_enabled', '3 Month Plan', 'Most popular plan')}
+                  {buildToggle('plan_3_months_enabled', '3 Month Plan', 'Most popular plan')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderToggle('plan_6_months_enabled', '6 Month Plan', 'Half-year access')}
+                  {buildToggle('plan_6_months_enabled', '6 Month Plan', 'Half-year access')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderToggle('plan_12_months_enabled', '12 Month Plan', 'Full year access')}
+                  {buildToggle('plan_12_months_enabled', '12 Month Plan', 'Full year access')}
                 </div>
               </HoverCard>
 
               {renderSectionHeader('Pricing (₦)', 'Prices are stored in kobo. Enter amounts in naira — conversion is automatic.')}
               <HoverCard isMobile={isMobile}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  {renderInput('price_1_month', '1 Month Price', undefined, 'price')}
+                  {buildInput('price_1_month', '1 Month Price', undefined, 'price')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('price_3_months', '3 Month Price', undefined, 'price')}
+                  {buildInput('price_3_months', '3 Month Price', undefined, 'price')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('price_6_months', '6 Month Price', undefined, 'price')}
+                  {buildInput('price_6_months', '6 Month Price', undefined, 'price')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('price_12_months', '12 Month Price', undefined, 'price')}
+                  {buildInput('price_12_months', '12 Month Price', undefined, 'price')}
                 </div>
               </HoverCard>
             </>
@@ -559,21 +584,22 @@ export default function AdminSettingsPage() {
             <>
               {renderSectionHeader('AI Features')}
               <HoverCard isMobile={isMobile}>
-                {renderToggle('ai_explanations_enabled', 'AI Explanations', 'Let students request Gemini explanations after each question')}
+                {buildToggle('ai_explanations_enabled', 'AI Explanations', 'Let students request Gemini explanations after each question')}
               </HoverCard>
 
               {renderSectionHeader('Discounts')}
               <HoverCard isMobile={isMobile}>
-                {renderToggle('coupons_enabled', 'Coupon Codes', 'Allow students to apply discount codes at checkout')}
+                {buildToggle('coupons_enabled', 'Coupon Codes', 'Allow students to apply discount codes at checkout')}
               </HoverCard>
             </>
           )}
-          .       {/* --- ACCESS TAB --- */}
+
+          {/* --- ACCESS TAB --- */}
           {activeTab === 'Access' && (
             <>
               {renderSectionHeader('Student Access')}
               <HoverCard isMobile={isMobile}>
-                {renderToggle('signups_enabled', 'New Signups', 'Allow new students to create accounts')}
+                {buildToggle('signups_enabled', 'New Signups', 'Allow new students to create accounts')}
               </HoverCard>
 
               <HoverCard isDanger={!!(pendingChanges.maintenance_mode ?? settings?.maintenance_mode)} isMobile={isMobile}>
@@ -582,49 +608,44 @@ export default function AdminSettingsPage() {
                     <WarningTriangleSVG /> ⚠ Enabling this will disconnect all active students immediately.
                   </div>
                 )}
-                {renderToggle('maintenance_mode', 'Maintenance Mode', 'Take the platform offline for all students. Use with caution.', true)}
+                {buildToggle('maintenance_mode', 'Maintenance Mode', 'Take the platform offline for all students. Use with caution.', true)}
               </HoverCard>
 
               <HoverCard isMobile={isMobile}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  {renderToggle('demo_enabled', 'Demo Mode', 'Allow students to try the platform without paying')}
+                  {buildToggle('demo_enabled', 'Demo Mode', 'Allow students to try the platform without paying')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('demo_duration_days', 'Demo Duration (days)', 'How many days a demo account lasts', 'number')}
+                  {buildInput('demo_duration_days', 'Demo Duration (days)', 'How many days a demo account lasts', 'number')}
                 </div>
               </HoverCard>
 
               {renderSectionHeader('Free Tier')}
               <HoverCard isMobile={isMobile}>
-                {renderInput('daily_question_limit', 'Daily Question Limit', 'Max questions a free tier student can answer per day before being prompted to subscribe (0 = unlimited)', 'number')}
+                {buildInput('daily_question_limit', 'Daily Question Limit', 'Max questions a free tier student can answer per day before being prompted to subscribe (0 = unlimited)', 'number')}
               </HoverCard>
-
-              {renderSectionHeader('Limits')}
-              <HoverCard isMobile={isMobile}>
-                {renderInput('grace_period_days', 'Grace Period (days)', 'Days after subscription expires before access is revoked', 'number')}
-              </HoverCard>
-
+              
               {renderSectionHeader('Support')}
               <HoverCard isMobile={isMobile}>
-                {renderInput('support_whatsapp', 'WhatsApp Support Number', 'International format without +. E.g. 2348012345678', 'text')}
+                {buildInput('support_whatsapp', 'WhatsApp Support Number', 'International format without +. E.g. 2348012345678', 'text')}
               </HoverCard>
             </>
           )}
 
-            {/* --- REFERRALS TAB --- */}
+          {/* --- REFERRALS TAB --- */}
           {activeTab === 'Referrals' && (
             <>
               {renderSectionHeader('Referral System')}
               <HoverCard isMobile={isMobile}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                  {renderToggle('referrals_enabled', 'Referrals Enabled', 'Allow students to refer others and earn rewards')}
+                  {buildToggle('referrals_enabled', 'Referrals Enabled', 'Allow students to refer others and earn rewards')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderToggle('referral_system_enabled', 'Reward Processing', 'Automatically process and apply referral rewards')}
+                  {buildToggle('referral_system_enabled', 'Reward Processing', 'Automatically process and apply referral rewards')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('referral_extension_days', 'Subscription Extension (days)', 'Days added to referrer\'s subscription per successful referral', 'number')}
+                  {buildInput('referral_extension_days', 'Subscription Extension (days)', 'Days added to referrer\'s subscription per successful referral', 'number')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('referral_coupon_discount', 'Referee Discount (%)', 'Percentage discount given to the student who was referred', 'number')}
+                  {buildInput('referral_coupon_discount', 'Referee Discount (%)', 'Percentage discount given to the student who was referred', 'number')}
                   <div style={{ height: '1px', backgroundColor: 'rgba(15,23,42,0.06)' }} />
-                  {renderInput('referral_expiry_threshold_days', 'Expiry Warning Threshold (days)', 'Notify referrer when their subscription has this many days left', 'number')}
+                  {buildInput('referral_expiry_threshold_days', 'Expiry Warning Threshold (days)', 'Notify referrer when their subscription has this many days left', 'number')}
                 </div>
               </HoverCard>
             </>
@@ -634,6 +655,10 @@ export default function AdminSettingsPage() {
       </div>
     </div>
   )
-}
+          }
+
+              
+
           
 
+     
