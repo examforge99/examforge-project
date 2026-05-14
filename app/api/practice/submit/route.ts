@@ -182,7 +182,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch existing metrics to add to running totals
-    const metricSubjects = [...new Set(gradedResults.map(r => r!.subject))]
+    const metricSubjects = Array.from(new Set(gradedResults.map(r => r!.subject)))
     const { data: existingMetrics } = await supabaseAdmin
       .from('metrics')
       .select('id, subject, topic, total_attempted, total_correct')
