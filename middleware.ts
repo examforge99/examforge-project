@@ -65,13 +65,12 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   // ── 2. System health — protected by secret header, not Clerk ────────────
   // Admin or monitoring tools access this via x-health-check-secret header
   if (isSystemHealthRoute(req)) {
-    const secret = req.headers.get('x-health-check-secret')
-    if (secret === process.env.HEALTH_CHECK_SECRET) {
-      return NextResponse.next()
-    }
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const expectedSecret = process.env.HEALTH_CHECK_SECRET
+  if (!expectedSecret) return NextResponse.next() // no secret set = allow through
+  const secret = req.headers.get('x-health-check-secret')
+  if (secret === expectedSecret) return NextResponse.next()
+  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-
   // ── 3. Not signed in → redirect to login ────────────────────────────────
   if (!userId) {
     const loginUrl = new URL('/login', req.url)
