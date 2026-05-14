@@ -219,29 +219,35 @@ export async function GET(request: Request) {
 
     // ── Fisher-Yates shuffle ──────────────────────────────────────────────────
 
-    const shuffled = [...questions]
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-    }
+    const { data: questions, error } = await supabaseAdmin
+  .from('questions')
+  .select('id, question_text, option_1, option_2, option_3, option_4, option_5, subject, topic, subtopic, year, exam_type, has_diagram, diagram_image_url, diagram_description')
+  .eq('exam_type', exam_type)
+  .eq('subject', subject)
 
-    // ── Build final response — clean options array, no null options ───────────
+if (error || !questions) {
+  return Response.json({ error: 'Failed to fetch questions' }, { status: 500 })
+}
 
-    const result = shuffled.slice(0, limit).map((q, index) => ({
-      id: q.id,
-      question_number: index + 1,
-      question_text: q.question_text,
-      options: [q.option_1, q.option_2, q.option_3, q.option_4, q.option_5].filter(Boolean) as string[],
-      subject: q.subject,
-      topic: q.topic ?? null,
-      subtopic: q.subtopic ?? null,
-      year: q.year ?? null,
-      exam_type: q.exam_type,
-      has_diagram: q.has_diagram ?? false,
-      diagram_image_url: q.diagram_image_url ?? null,
-      diagram_description: q.diagram_description ?? null,
-    }))
+const typedQuestions = questions as Array<{
+  id: string
+  question_text: string
+  option_1: string
+  option_2: string
+  option_3: string
+  option_4: string
+  option_5: string | null
+  subject: string
+  topic: string | null
+  subtopic: string | null
+  year: number | null
+  exam_type: string
+  has_diagram: boolean
+  diagram_image_url: string | null
+  diagram_description: string | null
+}>
 
+const shuffled = [...typedQuestions]
     return Response.json({
       session_id: session_id ?? null,
       questions: result,
