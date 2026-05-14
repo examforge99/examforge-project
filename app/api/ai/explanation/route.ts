@@ -1,104 +1,25 @@
 // app/api/ai/explanation/route.ts
 // UPDATED — AI knows what the student answered and responds accordingly
+// Uses callGemini from lib/ai/gemini which has multi-model fallback built in
 // POST /api/ai/explanation
 // Body: { question_id, user_id, subject, topic, selected_answer_index, is_correct }
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { buildSystemPrompt, StudentContext } from '@/lib/ai/buildSystemPrompt'
 import { saveInteraction } from '@/lib/ai/saveInteraction'
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!
-
-async function callGeminiWithOptionalImage(
-  systemPrompt: string,
-  userPrompt: string,
-  imageUrl?: string | null
-): Promise<string> {
-
-  const parts: any[] = [{ text: systemPrompt }]
-
-  if (imageUrl) {
-    try {
-      const imageRes = await fetch(imageUrl)
-      if (imageRes.ok) {
-        const imageBuffer = await imageRes.arrayBuffer()
-        const base64Image = Buffer.from(imageBuffer).toString('base64')
-
-        const mimeType = imageUrl.toLowerCase().includes('.png')
-          ? 'image/png'
-          : imageUrl.toLowerCase().includes('.webp')
-          ? 'image/webp'
-          : 'image/jpeg'
-
-        parts.push({
-          inline_data: {
-            mime_type: mimeType,
-            data: base64Image
-          }
-        })
-
-        parts.push({
-          text: 'The image above is the diagram associated with this question. Use it in your explanation.'
-        })
-      }
-    } catch (err) {
-      console.error('Failed to fetch diagram image:', err)
-    }
-  }
-
-  parts.push({ text: userPrompt })
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts }],
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 1200
-        }
-      })
-    }
-  )
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Gemini API error: ${error}`)
-  }
-
-  const data = await response.json()
-
-  if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-    throw new Error('Gemini returned empty response')
-  }
-
-  return data.candidates[0].content.parts[0].text.trim()
-}
+import { callGemini } from '@/lib/ai/gemini'
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const {
-      question_id,
-      user_id,
-      subject,
-      topic,
-      selected_answer_index,
-      is_correct,
-    } = body
+    const { question_id, user_id, subject, topic, selected_answer_index, is_correct } = body
 
     if (!question_id || !user_id) {
-      return Response.json(
-        { error: 'question_id and user_id are required' },
-        { status: 400 }
-      )
+      return Response.json({ error: 'question_id and user_id are required' }, { status: 400 })
     }
 
-    // Step 1: Check cache
-    // Only serve cached explanations when student got it RIGHT
-    // Wrong answer explanations must always be personalized — never cached
+    // Step 1: Check cache — only for correct answers
+    // Wrong answer explanations are always personalized — never cached
     const { data: answerData } = await supabaseAdmin
       .from('answers')
       .select('explanation, verification_status')
@@ -116,14 +37,10 @@ export async function POST(request: Request) {
         topic: topic || undefined,
         metricsSnapshot: { question_id, from_cache: true, is_correct },
       })
-
-      return Response.json({
-        explanation: answerData.explanation,
-        from_cache: true
-      })
+      return Response.json({ explanation: answerData.explanation, from_cache: true })
     }
 
-    // Step 2: Get full question details
+    // Step 2: Get question details
     const { data: question } = await supabaseAdmin
       .from('questions')
       .select(
@@ -140,20 +57,18 @@ export async function POST(request: Request) {
 
     // Step 3: Fetch student context
     const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
-    const contextRes = await fetch(
-      `${baseUrl}/api/student/context?user_id=${user_id}`
-    )
+    const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
     const contextData = await contextRes.json()
     const context: StudentContext = contextData as StudentContext
 
-    // Step 4: Build system prompt
+    // Step 4: Build system prompt with subject tone
     const systemPrompt = buildSystemPrompt(
       context,
       subject || (question as any).subject,
       'explanation'
     )
 
-    // Build options
+    // Build options list
     const optionsList = [
       (question as any).option_1,
       (question as any).option_2,
@@ -163,32 +78,20 @@ export async function POST(request: Request) {
     ].filter(Boolean)
 
     const optionLetters = ['A', 'B', 'C', 'D', 'E']
-
-    const optionsFormatted = optionsList
-      .map((opt, i) => `${optionLetters[i]}) ${opt}`)
-      .join('\n')
-
+    const optionsFormatted = optionsList.map((opt, i) => `${optionLetters[i]}) ${opt}`).join('\n')
     const correctLetter = optionLetters[(question as any).correct_answer_index] || 'A'
     const correctOptionText = optionsList[(question as any).correct_answer_index] || ''
-
-    const selectedLetter = selected_answer_index !== undefined && selected_answer_index !== null
-      ? optionLetters[selected_answer_index]
-      : null
-    const selectedOptionText = selected_answer_index !== undefined && selected_answer_index !== null
-      ? optionsList[selected_answer_index]
-      : null
-
+    const selectedLetter = selected_answer_index != null ? optionLetters[selected_answer_index] : null
+    const selectedOptionText = selected_answer_index != null ? optionsList[selected_answer_index] : null
     const diagramContext = (question as any).has_diagram && (question as any).diagram_description
-      ? `\nDiagram context: ${(question as any).diagram_description}`
-      : ''
+      ? `\nDiagram context: ${(question as any).diagram_description}` : ''
 
-    // Step 5: Build personalized prompt — different for right vs wrong
+    // Step 5: Build personalized prompt — different for correct vs wrong
     let userPrompt: string
 
     if (is_correct) {
       userPrompt = `The student just answered this question CORRECTLY. Reinforce their understanding.
-${(question as any).has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
-${diagramContext}
+${(question as any).has_diagram ? '(This question has a diagram. Reference it in your explanation.)' : ''}${diagramContext}
 
 Question: ${(question as any).question_text}
 Options:
@@ -210,8 +113,7 @@ Tone: encouraging, coach-like, Nigerian-aware. Flowing sentences, no bullet poin
 
     } else {
       userPrompt = `The student just answered this question INCORRECTLY. Help them understand their mistake and guide them.
-${(question as any).has_diagram ? '(This question has a diagram — it has been provided as an image above.)' : ''}
-${diagramContext}
+${(question as any).has_diagram ? '(This question has a diagram. Reference it in your explanation.)' : ''}${diagramContext}
 
 Question: ${(question as any).question_text}
 Options:
@@ -226,22 +128,17 @@ Your response must:
 2. Explain specifically WHY option ${selectedLetter} is wrong — don't be vague
 3. Explain clearly WHY option ${correctLetter} is the correct answer
 4. Identify the exact concept or topic they are missing that caused this mistake
-5. Tell them specifically what to go and revise — be precise (e.g. "Revise Newton's Third Law, specifically action-reaction pairs in collision problems")
+5. Tell them specifically what to go and revise — be precise
 6. Give one practical tip or memory trick to help them remember this next time
-${(question as any).has_diagram ? '7. Explain what the diagram shows and how understanding it would have helped them get this right' : ''}
+${(question as any).has_diagram ? '7. Explain what the diagram shows and how understanding it would have helped' : ''}
 
-Tone: honest but kind, like a coach who has seen this mistake before and knows exactly how to fix it. Nigerian-aware. Flowing sentences, no bullet points. English only.`
+Tone: honest but kind, like a coach who has seen this mistake before. Nigerian-aware. Flowing sentences, no bullet points. English only.`
     }
 
-    // Step 6: Call Gemini
-    const explanation = await callGeminiWithOptionalImage(
-      systemPrompt,
-      userPrompt,
-      (question as any).has_diagram ? (question as any).diagram_image_url : null
-    )
+    // Step 6: Call Gemini via lib — automatically uses fallback models if needed
+    const explanation = await callGemini(systemPrompt, userPrompt, 0.4, 1200)
 
-    // Step 7: Only cache correct answer explanations
-    // Wrong answer explanations are personalized — not cached
+    // Step 7: Cache correct answer explanations only
     if (is_correct) {
       if (answerData) {
         await supabaseAdmin
@@ -258,7 +155,7 @@ Tone: honest but kind, like a coach who has seen this mistake before and knows e
       }
     }
 
-    // Step 8: Save interaction using correct saveInteraction signature
+    // Step 8: Save interaction
     await saveInteraction(user_id, 'explanation', explanation, {
       subject: subject || (question as any).subject,
       topic: topic || (question as any).topic,
