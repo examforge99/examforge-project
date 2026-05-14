@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ const Icons = {
   ),
 }
 
-const GROUP_ICONS: Record<string, () => JSX.Element> = {
+const GROUP_ICONS: Record<string, () => React.ReactElement> = {
   Infrastructure: Icons.Server,
   AI: Icons.Zap,
   Payments: Icons.CreditCard,
@@ -453,5 +453,5 @@ export default function HealthPage() {
       </div>
     </div>
   )
-    }
-                  
+      }
+  
