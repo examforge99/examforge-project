@@ -492,4 +492,81 @@ function SubscribeContent() {
 
             <button
               onClick={handleSubscribe}
-              disabled=
+              disabled={submitting || !userId}
+              style={{
+                width: '100%', padding: 14,
+                background: submitting ? '#64748b' : '#0f172a',
+                color: '#ffffff', border: 'none', borderRadius: 10,
+                fontSize: 15, fontWeight: 700,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                fontFamily: 'system-ui, sans-serif',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'background 0.15s ease',
+              }}
+            >
+              {submitting ? (
+                <>
+                  <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  Redirecting to payment...
+                </>
+              ) : (
+                <>
+                  <LockIcon />
+                  Pay ₦{finalPrice.toLocaleString('en-NG')} securely
+                </>
+              )}
+            </button>
+
+            <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 12, lineHeight: 1.5 }}>
+              Secured by Paystack. Your card details are never stored.
+            </p>
+          </div>
+        )}
+
+        {/* WhatsApp support */}
+        {whatsappNumber && (
+          <div style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: '#64748b' }}>
+            Need help?{' '}
+            <a
+              href={`https://wa.me/${whatsappNumber}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: '#16a34a', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <WhatsAppIcon /> Chat with us on WhatsApp
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Spinner fallback ─────────────────────────────────────────────────────────
+
+function LoadingFallback() {
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#faf9f7',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <div style={{
+        width: 32, height: 32,
+        border: '3px solid rgba(15,23,42,0.1)',
+        borderTopColor: '#0f172a', borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+      }} />
+    </div>
+  )
+}
+
+// ─── Default export — Suspense wrapper is HERE, at the top level ──────────────
+
+export default function SubscribePage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <SubscribeContent />
+    </Suspense>
+  )
+           }
