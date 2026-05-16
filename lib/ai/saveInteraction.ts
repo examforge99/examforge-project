@@ -34,15 +34,14 @@ export async function saveInteraction(
 
     if (insertError) {
       console.error('saveInteraction insert error:', insertError.message)
-      await supabaseAdmin.from('error_logs').insert({
-        error_code:    'AI_SAVE_INTERACTION_FAILED',
-        message:       insertError.message,
-        clerk_user_id: userId,
-        metadata:      { interaction_type: interactionType },
-      }).catch(() => {})
-      return
-    }
-
+      try {
+  await supabaseAdmin.from('error_logs').insert({
+    error_code: '...',
+    message: '...',
+    clerk_user_id: userId,
+    metadata: null,
+  })
+} catch { /* silent */ }
     // ── Check count — trigger summary refresh every 5 interactions ────────
 
     const { count, error: countError } = await supabaseAdmin
@@ -98,23 +97,25 @@ export async function saveInteraction(
     } catch (summaryErr: any) {
       // Summary failure must never crash the caller
       console.error('Summary refresh failed:', summaryErr.message)
-      await supabaseAdmin.from('error_logs').insert({
-        error_code:    'AI_SAVE_INTERACTION_SUMMARY_FAILED',
-        message:       summaryErr.message,
-        clerk_user_id: userId,
-        metadata:      null,
-      }).catch(() => {})
-    }
-
+       try {
+  await supabaseAdmin.from('error_logs').insert({
+    error_code: '...',
+    message: '...',
+    clerk_user_id: userId,
+    metadata: null,
+  })
+} catch { /* silent */ }
+      
   } catch (err: any) {
     // saveInteraction must never crash the calling route
     console.error('Failed to save AI interaction:', err.message)
-    await supabaseAdmin.from('error_logs').insert({
-      error_code:    'AI_SAVE_INTERACTION_UNHANDLED',
-      message:       err.message,
-      clerk_user_id: userId,
-      metadata:      null,
-    }).catch(() => {})
-  }
-        }
+     try {
+  await supabaseAdmin.from('error_logs').insert({
+    error_code: '...',
+    message: '...',
+    clerk_user_id: userId,
+    metadata: null,
+  })
+} catch { /* silent */ }
+    }
   
