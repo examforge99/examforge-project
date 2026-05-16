@@ -19,31 +19,32 @@ export async function saveInteraction(
 ): Promise<void> {
   try {
     // ── Save directly to ai_interactions — no HTTP call ───────────────────
-
     const { error: insertError } = await supabaseAdmin
       .from('ai_interactions')
       .insert({
-        clerk_user_id:     userId,
-        interaction_type:  interactionType,
-        ai_message:        aiMessage.trim().slice(0, 4000),
-        subject:           options?.subject           ?? null,
-        topic:             options?.topic             ?? null,
-        session_id:        options?.sessionId         ?? null,
-        metrics_snapshot:  options?.metricsSnapshot   ?? null,
+        clerk_user_id:    userId,
+        interaction_type: interactionType,
+        ai_message:       aiMessage.trim().slice(0, 4000),
+        subject:          options?.subject          ?? null,
+        topic:            options?.topic            ?? null,
+        session_id:       options?.sessionId        ?? null,
+        metrics_snapshot: options?.metricsSnapshot  ?? null,
       })
 
     if (insertError) {
       console.error('saveInteraction insert error:', insertError.message)
       try {
-  await supabaseAdmin.from('error_logs').insert({
-    error_code: '...',
-    message: '...',
-    clerk_user_id: userId,
-    metadata: null,
-  })
-} catch { /* silent */ }
-    // ── Check count — trigger summary refresh every 5 interactions ────────
+        await supabaseAdmin.from('error_logs').insert({
+          error_code: 'SAVE_INTERACTION_INSERT_ERROR',
+          message:    insertError.message,
+          user_id:    userId,
+          metadata:   null,
+        })
+      } catch { /* silent */ }
+      return
+    }
 
+    // ── Check count — trigger summary refresh every 5 interactions ────────
     const { count, error: countError } = await supabaseAdmin
       .from('ai_interactions')
       .select('*', { count: 'exact', head: true })
@@ -52,7 +53,6 @@ export async function saveInteraction(
     if (countError || count === null || count === 0 || count % 5 !== 0) return
 
     // ── Refresh AI summary inline — no HTTP call ──────────────────────────
-
     try {
       const { data: recentRows } = await supabaseAdmin
         .from('ai_interactions')
@@ -71,7 +71,9 @@ export async function saveInteraction(
         .maybeSingle()
 
       const interactionText = recentRows
-        .map(i => `[${i.interaction_type}]: ${i.ai_message.replace(/[<>{}]/g, '').slice(0, 400)}`)
+        .map((i: { interaction_type: string; ai_message: string }) =>
+          `[${i.interaction_type}]: ${i.ai_message.replace(/[<>{}]/g, '').slice(0, 400)}`
+        )
         .join('\n')
 
       const newSummary = await callGemini(
@@ -97,25 +99,26 @@ export async function saveInteraction(
     } catch (summaryErr: any) {
       // Summary failure must never crash the caller
       console.error('Summary refresh failed:', summaryErr.message)
-       try {
-  await supabaseAdmin.from('error_logs').insert({
-    error_code: '...',
-    message: '...',
-    clerk_user_id: userId,
-    metadata: null,
-  })
-} catch { /* silent */ }
-      
+      try {
+        await supabaseAdmin.from('error_logs').insert({
+          error_code: 'SUMMARY_REFRESH_ERROR',
+          message:    summaryErr.message,
+          user_id:    userId,
+          metadata:   null,
+        })
+      } catch { /* silent */ }
+    }
+
   } catch (err: any) {
     // saveInteraction must never crash the calling route
     console.error('Failed to save AI interaction:', err.message)
-     try {
-  await supabaseAdmin.from('error_logs').insert({
-    error_code: '...',
-    message: '...',
-    clerk_user_id: userId,
-    metadata: null,
-  })
-} catch { /* silent */ }
-    }
-  
+    try {
+      await supabaseAdmin.from('error_logs').insert({
+        error_code: 'SAVE_INTERACTION_ERROR',
+        message:    err.message,
+        user_id:    userId,
+        metadata:   null,
+      })
+    } catch { /* silent */ }
+  }
+}
