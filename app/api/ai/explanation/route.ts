@@ -1,4 +1,4 @@
-// app/api/ai/explanation/route.ts
+/abxd/ app/api/ai/explanation/route.ts
 // UPDATED — AI knows what the student answered and responds accordingly
 // Uses callGemini from lib/ai/gemini which has multi-model fallback built in
 // POST /api/ai/explanation
