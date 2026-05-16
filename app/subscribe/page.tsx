@@ -546,7 +546,7 @@ export default function SubscribePage() {
                 onClick={handleApplyCoupon}
                 disabled={!couponCode.trim() || submitting}
                 style={{
-                  padding: '10px 18px',
+                  padding:  '10px 18px',
                   background: '#0f172a', color: '#ffffff',
                   border: 'none', borderRadius: 8,
                   fontSize: 13, fontWeight: 600,
@@ -675,4 +675,4 @@ export default function SubscribePage() {
       </div>
     </div>
   )
-                }
+}
