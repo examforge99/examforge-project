@@ -92,7 +92,7 @@ export async function POST(request: Request) {
 
     // ── Apply coupon if provided ──────────────────────────────────────────────
 
-    let amountInKobo = plan.price_kobo
+    let amountInKobo = plan.price_kobo as number
     let couponApplied = false
     let couponDiscount = 0
 
@@ -128,7 +128,15 @@ export async function POST(request: Request) {
       )
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_URL ?? 'http://examforge-blond.vercel.app'
+    const baseUrl = process.env.NEXT_PUBLIC_URL
+
+    if (!baseUrl) {
+      await logError('PAYMENTS_NO_BASE_URL', 'NEXT_PUBLIC_URL is not set', user_id, null)
+      return Response.json(
+        { error: 'Server misconfiguration. Please contact support.' },
+        { status: 500 }
+      )
+    }
 
     // ── Initialize Paystack ───────────────────────────────────────────────────
 
@@ -148,7 +156,7 @@ export async function POST(request: Request) {
           plan_name,
           coupon_code:          coupon_code ?? null,
           coupon_applied:       couponApplied,
-          original_amount_kobo: plan.price_kobo,
+          original_amount_kobo: plan.price_kobo as number,
           discount_kobo:        couponDiscount,
           final_amount_kobo:    amountInKobo,
           customer_name:        userData.full_name ?? null,
@@ -187,3 +195,4 @@ export async function POST(request: Request) {
     )
   }
 }
+
