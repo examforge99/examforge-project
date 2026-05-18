@@ -48,7 +48,7 @@ export const PRICING = {
   },
 
   // WhatsApp support number — international format without +
-  support_whatsapp: '2348000000000',
+  support_whatsapp: '2348054271432',
 } as const
 
 // ─── Types ────────────────────────────────────────────────────────────────────
