@@ -1,4 +1,4 @@
-// app/api/payments/verify/route.ts
+          // app/api/payments/verify/route.ts
 // Called by Paystack redirect after student completes payment
 // Verifies transaction, activates subscription, handles referral reward
 // On success → redirects to /dashboard
@@ -220,4 +220,5 @@ export async function GET(request: Request) {
     })
     return Response.redirect(`${baseUrl}/subscribe?failed=true`)
   }
-            }
+      }
+      
