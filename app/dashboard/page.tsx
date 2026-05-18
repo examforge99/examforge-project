@@ -323,19 +323,23 @@ export default function DashboardPage() {
     if (!userId) return
 
     const fetchWelcome = async () => {
-      setAiLoading(true)
-      try {
-        const res = await fetch(`/api/ai/welcome`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ user_id: userId })
-})
-        }
-      } catch {
-        // Silent — welcome message is non-critical
-      } finally {
-        setAiLoading(false)
-      }
+  setAiLoading(true)
+  try {
+    const res = await fetch(`/api/ai/welcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    if (!data.skipped && data.message) {
+      setAiMessage(data.message)
+    }
+  } catch {
+    // Silent — welcome message is non-critical
+  } finally {
+    setAiLoading(false)
+  }
     }
 
     fetchWelcome()
