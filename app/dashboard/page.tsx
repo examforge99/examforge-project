@@ -390,47 +390,29 @@ export default function DashboardPage() {
         </div>
 
         {/* ── AI Welcome message ── */}
-        {aiLoading && (
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14,
-            padding: '16px 20px',
-            marginBottom: 20,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
-              <Icons.Sparkle />
-            </div>
-            <Skeleton height={14} width="70%" />
-          </div>
-        )}
-
-        {aiMessage && !aiLoading && (
-          <div style={{
-            background: '#ffffff',
-            border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14,
-            padding: '16px 20px',
-            marginBottom: 20,
-            animation: 'fadeIn 0.4s ease',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
-                <Icons.Sparkle />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>ExamForge AI</div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>Your coach</div>
-              </div>
-            </div>
-            <p style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.7, margin: 0, fontFamily: 'Georgia, serif' }}>
-              {aiMessage}
-            </p>
-          </div>
-        )}
+        {aiMessage && (
+  <div style={{
+    background: '#ffffff',
+    border: '1px solid rgba(15,23,42,0.08)',
+    borderRadius: 14,
+    padding: '16px 20px',
+    marginBottom: 20,
+    animation: 'fadeIn 0.4s ease',
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+      <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0 }}>
+        <Icons.Sparkle />
+      </div>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>ExamForge AI</div>
+        <div style={{ fontSize: 11, color: '#64748b' }}>Your coach</div>
+      </div>
+    </div>
+    <p style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.7, margin: 0, fontFamily: 'Georgia, serif' }}>
+      {aiMessage}
+    </p>
+  </div>
+)}
 
         {/* ── Stats row ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
