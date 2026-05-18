@@ -325,11 +325,11 @@ export default function DashboardPage() {
     const fetchWelcome = async () => {
       setAiLoading(true)
       try {
-        const res = await fetch(`/api/ai/welcome?user_id=${userId}`)
-        if (!res.ok) return
-        const data = await res.json()
-        if (!data.skipped && data.message) {
-          setAiMessage(data.message)
+        const res = await fetch(`/api/ai/welcome`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ user_id: userId })
+})
         }
       } catch {
         // Silent — welcome message is non-critical
