@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_URL ?? 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_URL ?? 'http://examforge-blond.vercel.app'
 
     // ── Initialize Paystack ───────────────────────────────────────────────────
 
@@ -186,4 +186,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-        }
+}
