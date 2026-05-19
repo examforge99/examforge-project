@@ -506,4 +506,362 @@ export default function DashboardPage() {
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', marginBottom: 6 }}>
+                <span style={{ color: '#475569' }}><Icons.Calendar /></span>
+                <span style={{ fontSize: 12, color: '#475569', fontWeight: 500 }}>
+                  {new Date(data.exam_info.exam_date).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </span>
+              </div>
+              {data.user.target_score && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: 'rgba(29,78,216,0.2)', border: '1px solid rgba(59,130,246,0.3)',
+                  borderRadius: 99, padding: '4px 10px',
+                }}>
+                  <Icons.Target />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#93c5fd' }}>
+                    Target: {data.user.target_score}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── AI Welcome Message ── */}
+        {aiMessage && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '18px 20px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.05)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#ffffff', flexShrink: 0,
+              }}>
+                <Icons.Sparkle />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'Georgia, serif' }}>ExamForge AI</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Your study coach</div>
+              </div>
+              <div style={{
+                marginLeft: 'auto',
+                fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+                textTransform: 'uppercase', color: '#1d4ed8',
+                background: 'rgba(29,78,216,0.08)', border: '1px solid rgba(29,78,216,0.15)',
+                padding: '3px 8px', borderRadius: 99,
+              }}>AI</div>
+            </div>
+            <p style={{
+              fontSize: 14, color: '#334155', lineHeight: 1.75,
+              margin: 0, fontFamily: 'Georgia, serif',
+            }}>{aiMessage}</p>
+          </div>
+        )}
+
+        {/* ── Neglected Subjects Warning ── */}
+        {!loading && neglected.length > 0 && (
+          <div className="dash-section" style={{
+            background: '#fffbeb',
+            border: '1.5px solid #fde68a',
+            borderRadius: 14, padding: '14px 16px',
+            marginBottom: 20,
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 10,
+              background: 'rgba(217,119,6,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#d97706', flexShrink: 0,
+            }}>
+              <Icons.AlertTriangle />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 3 }}>
+                Subjects falling behind
+              </div>
+              <div style={{ fontSize: 12.5, color: '#b45309', lineHeight: 1.6 }}>
+                You haven&apos;t studied <strong>{neglected.join(', ')}</strong> in 3+ days. Don&apos;t let these slip before your exam.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── New User Onboarding (empty state) ── */}
+        {!loading && isNew && (
+          <div className="dash-section" style={{
+            background: 'linear-gradient(135deg, rgba(29,78,216,0.04), rgba(29,78,216,0.02))',
+            border: '1.5px dashed rgba(29,78,216,0.2)',
+            borderRadius: 16, padding: '28px 24px',
+            textAlign: 'center', marginBottom: 24,
+          }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: 14,
+              background: 'rgba(29,78,216,0.1)',
+              border: '1px solid rgba(29,78,216,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 16px', color: '#1d4ed8',
+            }}>
+              <Icons.Sparkle />
+            </div>
+            <h3 style={{
+              fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 800,
+              color: '#0f172a', margin: '0 0 8px', letterSpacing: '-0.3px',
+            }}>Start your first session</h3>
+            <p style={{
+              fontSize: 13.5, color: '#64748b', lineHeight: 1.7,
+              margin: '0 auto 20px', maxWidth: 320,
+            }}>
+              Pick any practice mode below. After your first session, your performance stats and AI coaching will appear here.
+            </p>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 13, fontWeight: 600, color: '#1d4ed8',
+            }}>
+              Choose a mode below <Icons.ArrowRight />
+            </div>
+          </div>
+        )}
+
+        {/* ── Quick Actions ── */}
+        <div className="dash-section" style={{ marginBottom: 28 }}>
+          <SectionHeader
+            title="Practice"
+            subtitle="Choose your session type"
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 12 }}>
+            <QuickAction
+              label="CBT Session"
+              description="Full JAMB combo with 2-hour timer and real exam format"
+              href="/practice/cbt"
+              accent="#1d4ed8"
+              icon={Icons.Clock}
+              badge="Recommended"
+            />
+            <QuickAction
+              label="Free Practice"
+              description="Pick subject, topic, and question count"
+              href="/practice/free"
+              accent="#16a34a"
+              icon={Icons.BookOpen}
+            />
+            <QuickAction
+              label="Mock Exam"
+              description="Custom subjects with your own time limit"
+              href="/practice/mock"
+              accent="#7c3aed"
+              icon={Icons.Target}
+            />
+          </div>
+        </div>
+
+        {/* ── Subject Performance ── */}
+        {(loading || subjects.length > 0) && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '22px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.04)',
+          }}>
+            <SectionHeader
+              title="Performance by Subject"
+              subtitle="Based on your practice history"
+            />
+            {loading ? (
+              [1,2,3,4].map(i => (
+                <div key={i} style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Skeleton width="38%" height={13} radius={3} />
+                    <Skeleton width="14%" height={13} radius={10} />
+                  </div>
+                  <Skeleton width="100%" height={6} radius={99} />
+                </div>
+              ))
+            ) : subjects.length > 0 ? (
+              subjects.map(([subject, accuracy]) => (
+                <AccuracyBar key={subject} subject={subject} accuracy={Math.round(accuracy)} />
+              ))
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: 13 }}>
+                Complete a session to see your subject breakdown
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Weak Topics ── */}
+        {!loading && weakTopics.length > 0 && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '22px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.04)',
+          }}>
+            <SectionHeader
+              title="Focus Areas"
+              subtitle="Topics that need the most work"
+            />
+            {weakTopics.map((topic, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px',
+                background: i % 2 === 0 ? '#faf9f7' : '#ffffff',
+                borderRadius: 10, marginBottom: 8,
+                border: '1px solid rgba(15,23,42,0.05)',
+              }}>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+                    {topic.topic}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{topic.subject}</div>
+                </div>
+                <div style={{
+                  fontSize: 13, fontWeight: 700, color: '#dc2626',
+                  background: 'rgba(220,38,38,0.08)',
+                  padding: '4px 10px', borderRadius: 99,
+                }}>{topic.accuracy}%</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Recent Sessions ── */}
+        {(loading || recentSessions.length > 0) && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '22px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.04)',
+          }}>
+            <SectionHeader
+              title="Recent Sessions"
+              subtitle="Your last practice results"
+            />
+            {loading ? (
+              [1,2,3].map(i => (
+                <div key={i} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '12px 14px', background: '#faf9f7', borderRadius: 10, marginBottom: 8,
+                }}>
+                  <div>
+                    <div style={{ marginBottom: 5 }}><Skeleton width={110} height={13} radius={3} /></div>
+                    <Skeleton width={65} height={11} radius={3} />
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ marginBottom: 4 }}><Skeleton width={44} height={18} radius={4} /></div>
+                    <Skeleton width={32} height={11} radius={3} />
+                  </div>
+                </div>
+              ))
+            ) : (
+              recentSessions.map((session, i) => {
+                const pct = Math.round((session.score / session.total_questions) * 100)
+                const color = pct >= 70 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626'
+                return (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '12px 14px',
+                    background: i % 2 === 0 ? '#faf9f7' : '#ffffff',
+                    borderRadius: 10, marginBottom: 8,
+                    border: '1px solid rgba(15,23,42,0.05)',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+                        {session.subject}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
+                        {session.score}/{session.total_questions} correct
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{
+                        fontSize: 16, fontWeight: 800, color,
+                        fontFamily: 'Georgia, serif',
+                      }}>{pct}%</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                        {new Date(session.date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── News ── */}
+        {!loading && news.length > 0 && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '22px',
+            boxShadow: '0 2px 12px rgba(15,23,42,0.04)',
+          }}>
+            <SectionHeader
+              title="Exam Updates"
+              subtitle={`Latest ${data?.user?.exam_type ?? ''} news`}
+            />
+            {news.slice(0, 3).map((item, i) => (
+              <div key={item.id} style={{
+                padding: '14px',
+                background: i % 2 === 0 ? '#faf9f7' : '#ffffff',
+                borderRadius: 10, marginBottom: 8,
+                border: '1px solid rgba(15,23,42,0.05)',
+                cursor: item.source_url ? 'pointer' : 'default',
+              }}
+                onClick={() => item.source_url && window.open(item.source_url, '_blank')}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                    background: 'rgba(29,78,216,0.08)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#1d4ed8', marginTop: 1,
+                  }}>
+                    <Icons.Newspaper />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', marginBottom: 4, lineHeight: 1.4 }}>
+                      {item.headline}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>{item.body}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                      {new Date(item.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+                      {item.source_url && (
+                        <span style={{ color: '#1d4ed8', marginLeft: 8, fontWeight: 600 }}>Read more →</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Error State ── */}
+        {error && (
+          <div style={{
+            background: '#fef2f2', border: '1.5px solid #fecaca',
+            borderRadius: 14, padding: '16px 20px',
+            display: 'flex', alignItems: 'center', gap: 12,
+            color: '#dc2626', fontSize: 13, fontWeight: 500,
+          }}>
+            <Icons.AlertTriangle />
+            {error}
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+            }
            
