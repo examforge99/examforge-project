@@ -286,11 +286,11 @@ export async function GET(req: NextRequest) {
     console.error('[admin/payments] GET Error:', err)
 
     await supabaseAdmin.from('error_logs').insert({
-      error_code: 'ADMIN_PAYMENTS_FETCH_ERROR',
-      message: err instanceof Error ? err.message : 'Unknown error',
-      user_id: null,
-      metadata: { route: 'GET /api/admin/payments' },
-    })
+  error_code: 'ADMIN_PAYMENTS_FETCH_ERROR',
+  message: err instanceof Error ? err.message : 'Unknown error',
+  clerk_user_id: null,   // ✅ Correct
+  metadata: { route: 'GET /api/admin/payments' },
+})
 
     return NextResponse.json(
       { error: 'Failed to fetch payments' },
