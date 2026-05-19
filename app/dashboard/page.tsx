@@ -429,7 +429,7 @@ export default function DashboardPage() {
             }}>
               {isNew
                 ? 'Welcome! Start your first practice session below.'
-                : `${(data?.milestones?.total_questions_answered ?? 0).toLocaleString()} questions answered${(data?.streak?.current_streak_days ?? 0) > 0 ? ` · ${data.streak.current_streak_days} day streak 🔥` : ''}`
+                   : `${(data?.milestones?.total_questions_answered ?? 0).toLocaleString()} questions answered${(data?.streak?.current_streak_days ?? 0) > 0 ? ` · ${data?.streak?.current_streak_days} day streak 🔥` : ''}`
               }
             </p>
           )}
