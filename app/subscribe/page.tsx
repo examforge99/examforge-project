@@ -1,43 +1,9 @@
- 'use client'
+'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { useSearchParams } from 'next/navigation'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type PlanKey = '1_month' | '3_months' | '6_months' | '12_months'
-
-interface PlanSettings {
-  payments_enabled: boolean
-  coupons_enabled: boolean
-  prices: Record<PlanKey, number>
-  prices_kobo: Record<PlanKey, number>
-  plan_enabled: Record<PlanKey, boolean>
-}
-
-interface Plan {
-  key: PlanKey
-  label: string
-  duration: string
-  popular: boolean
-}
-
-const PLANS: Plan[] = [
-  { key: '1_month',  label: '1 Month',  duration: '30 days access',  popular: false },
-  { key: '3_months', label: '3 Months', duration: '90 days access',  popular: true  },
-  { key: '6_months', label: '6 Months', duration: '180 days access', popular: false },
-  { key: '12_months',label: '12 Months',duration: '365 days access', popular: false },
-]
-
-const FEATURES = [
-  'Full CBT exam simulation',
-  'Unlimited practice questions',
-  'AI explanations per question',
-  'Mock exams with custom timer',
-  'Performance analytics',
-  'Post-session AI coaching',
-]
+import { PRICING, PLAN_KEYS, type PlanKey } from '@/lib/pricing'
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -74,39 +40,36 @@ const TagIcon = () => (
   </svg>
 )
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
+// ─── Features ─────────────────────────────────────────────────────────────────
 
-function Skeleton({ width = '100%', height = 16, radius = 6 }: { width?: string | number; height?: number; radius?: number }) {
-  return (
-    <div style={{
-      width, height, borderRadius: radius,
-      background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
-      backgroundSize: '200% 100%',
-      animation: 'shimmer 1.5s infinite',
-    }} />
-  )
-}
+const FEATURES = [
+  'Full CBT exam simulation',
+  'Unlimited practice questions',
+  'AI explanations per question',
+  'Mock exams with custom timer',
+  'Performance analytics',
+  'Post-session AI coaching',
+]
 
 // ─── Plan card ────────────────────────────────────────────────────────────────
 
 function PlanCard({
-  plan, price, enabled, selected, submitting, onSelect,
+  planKey, selected, submitting, onSelect,
 }: {
-  plan: Plan
-  price: number
-  enabled: boolean
+  planKey: PlanKey
   selected: boolean
   submitting: boolean
   onSelect: () => void
 }) {
-  const monthCount = parseInt(plan.key)
+  const plan = PRICING.plans[planKey]
+  const monthCount = parseInt(planKey)
   const perMonth = !isNaN(monthCount) && monthCount > 1
-    ? Math.round(price / monthCount)
+    ? Math.round(plan.price_naira / monthCount)
     : null
 
   return (
     <div
-      onClick={() => enabled && !submitting && onSelect()}
+      onClick={() => plan.enabled && !submitting && onSelect()}
       style={{
         position: 'relative',
         background: selected ? '#0f172a' : '#ffffff',
@@ -116,8 +79,8 @@ function PlanCard({
           ? '2px solid #1d4ed8'
           : '1px solid rgba(15,23,42,0.10)',
         borderRadius: 16, padding: '24px 20px',
-        cursor: enabled && !submitting ? 'pointer' : 'not-allowed',
-        opacity: enabled ? 1 : 0.5,
+        cursor: plan.enabled && !submitting ? 'pointer' : 'not-allowed',
+        opacity: plan.enabled ? 1 : 0.5,
         transition: 'all 0.2s ease',
         textAlign: 'center',
       }}
@@ -135,7 +98,7 @@ function PlanCard({
         }}>Most Popular</div>
       )}
 
-      {!enabled && (
+      {!plan.enabled && (
         <div style={{ position: 'absolute', top: 12, right: 12, color: '#94a3b8' }}>
           <LockIcon />
         </div>
@@ -152,7 +115,7 @@ function PlanCard({
         fontWeight: 900, color: selected ? '#ffffff' : '#0f172a',
         lineHeight: 1, marginBottom: 4,
       }}>
-        ₦{price.toLocaleString('en-NG')}
+        ₦{plan.price_naira.toLocaleString('en-NG')}
       </div>
 
       {perMonth && (
@@ -185,44 +148,20 @@ function PlanCard({
   )
 }
 
-// ─── Main content — uses useSearchParams so must be inside Suspense ───────────
+// ─── Main content ─────────────────────────────────────────────────────────────
 
 function SubscribeContent() {
   const { userId } = useAuth()
   const searchParams = useSearchParams()
   const paymentFailed = searchParams.get('failed') === 'true'
 
-  const [settings, setSettings] = useState<PlanSettings | null>(null)
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>('3_months')
   const [couponCode, setCouponCode] = useState('')
   const [couponApplied, setCouponApplied] = useState(false)
   const [couponDiscount, setCouponDiscount] = useState(0)
   const [couponError, setCouponError] = useState('')
-  const [whatsappNumber, setWhatsappNumber] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [pageError, setPageError] = useState('')
-
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const res = await fetch('/api/payments/plan-settings')
-        if (!res.ok) {
-          const err = await res.json()
-          setPageError(err.error ?? 'Could not load plans.')
-          return
-        }
-        const data = await res.json()
-        setSettings(data)
-        if (data.support_whatsapp) setWhatsappNumber(data.support_whatsapp)
-      } catch {
-        setPageError('Could not load subscription plans. Please refresh.')
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchSettings()
-  }, [])
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return
@@ -248,8 +187,9 @@ function SubscribeContent() {
   }
 
   const handleSubscribe = async () => {
-    if (!userId || !settings) return
+    if (!userId) return
     setSubmitting(true)
+    setPageError('')
     try {
       const res = await fetch('/api/payments/initialize', {
         method: 'POST',
@@ -273,13 +213,35 @@ function SubscribeContent() {
     }
   }
 
-  const currentPrice = settings?.prices[selectedPlan] ?? 0
+  const currentPrice = PRICING.plans[selectedPlan].price_naira
   const finalPrice = couponApplied ? Math.max(0, currentPrice - couponDiscount) : currentPrice
+  const whatsappNumber = PRICING.support_whatsapp
+
+  // Payments globally disabled
+  if (!PRICING.payments_enabled) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#faf9f7', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ textAlign: 'center', maxWidth: 360 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 8, fontFamily: 'Georgia, serif' }}>
+            Payments Unavailable
+          </div>
+          <p style={{ fontSize: 14, color: '#64748b', marginBottom: 20, lineHeight: 1.7 }}>
+            Payments are temporarily unavailable. Please check back soon.
+          </p>
+          {whatsappNumber && (
+            <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer"
+              style={{ color: '#16a34a', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+              <WhatsAppIcon /> Contact support on WhatsApp
+            </a>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#faf9f7', fontFamily: 'system-ui, sans-serif', paddingBottom: 80 }}>
       <style>{`
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
@@ -336,81 +298,48 @@ function SubscribeContent() {
           }}>{pageError}</div>
         )}
 
-        {/* Payments disabled */}
-        {!loading && settings && !settings.payments_enabled && (
-          <div style={{
-            background: '#fffbeb', border: '1px solid #fde68a',
-            borderRadius: 12, padding: 16, marginTop: 24,
-            color: '#92400e', fontSize: 14, textAlign: 'center',
-          }}>
-            Payments are temporarily unavailable. Please check back soon.
-            {whatsappNumber && (
-              <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer"
-                style={{ display: 'block', marginTop: 8, color: '#16a34a', fontWeight: 600, textDecoration: 'none' }}>
-                Contact support on WhatsApp
-              </a>
-            )}
-          </div>
-        )}
-
         {/* Plan cards */}
         <div style={{ marginTop: 28 }}>
-          {loading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} style={{ background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', borderRadius: 16, padding: 24 }}>
-                  <div style={{ marginBottom: 16 }}><Skeleton width="60%" height={14} /></div>
-                  <div style={{ marginBottom: 8 }}><Skeleton width="80%" height={32} /></div>
-                  <Skeleton width="50%" height={12} />
-                </div>
-              ))}
-            </div>
-          ) : settings?.payments_enabled ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-              {PLANS.map(plan => (
-                <PlanCard
-                  key={plan.key}
-                  plan={plan}
-                  price={settings.prices[plan.key]}
-                  enabled={settings.plan_enabled[plan.key]}
-                  selected={selectedPlan === plan.key}
-                  submitting={submitting}
-                  onSelect={() => {
-                    setSelectedPlan(plan.key)
-                    setCouponApplied(false)
-                    setCouponDiscount(0)
-                    setCouponCode('')
-                    setCouponError('')
-                  }}
-                />
-              ))}
-            </div>
-          ) : null}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            {PLAN_KEYS.map(key => (
+              <PlanCard
+                key={key}
+                planKey={key}
+                selected={selectedPlan === key}
+                submitting={submitting}
+                onSelect={() => {
+                  setSelectedPlan(key)
+                  setCouponApplied(false)
+                  setCouponDiscount(0)
+                  setCouponCode('')
+                  setCouponError('')
+                }}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Features */}
-        {!loading && settings?.payments_enabled && (
+        <div style={{
+          background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)',
+          borderRadius: 14, padding: 20, marginTop: 20,
+        }}>
           <div style={{
-            background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14, padding: 20, marginTop: 20,
-          }}>
-            <div style={{
-              fontSize: 12, fontWeight: 700, color: '#94a3b8',
-              textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14,
-            }}>Everything included</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
-              {FEATURES.map(f => (
-                <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#475569' }}>
-                  <div style={{ color: '#16a34a', flexShrink: 0 }}><CheckIcon /></div>
-                  {f}
-                </div>
-              ))}
-            </div>
+            fontSize: 12, fontWeight: 700, color: '#94a3b8',
+            textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14,
+          }}>Everything included</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
+            {FEATURES.map(f => (
+              <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#475569' }}>
+                <div style={{ color: '#16a34a', flexShrink: 0 }}><CheckIcon /></div>
+                {f}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
 
         {/* Coupon */}
-        {!loading && settings?.payments_enabled && settings?.coupons_enabled && (
+        {PRICING.coupons_enabled && (
           <div style={{
             background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)',
             borderRadius: 14, padding: 20, marginTop: 16,
@@ -464,64 +393,62 @@ function SubscribeContent() {
         )}
 
         {/* Order summary + CTA */}
-        {!loading && settings?.payments_enabled && (
-          <div style={{
-            background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)',
-            borderRadius: 14, padding: 20, marginTop: 16,
-          }}>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
-                <span>{PLANS.find(p => p.key === selectedPlan)?.label} Plan</span>
-                <span>₦{currentPrice.toLocaleString('en-NG')}</span>
-              </div>
-              {couponApplied && couponDiscount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#16a34a', marginBottom: 8 }}>
-                  <span>Coupon discount</span>
-                  <span>- ₦{couponDiscount.toLocaleString('en-NG')}</span>
-                </div>
-              )}
-              <div style={{
-                display: 'flex', justifyContent: 'space-between',
-                fontSize: 16, fontWeight: 700, color: '#0f172a',
-                paddingTop: 10, borderTop: '1px solid rgba(15,23,42,0.06)',
-              }}>
-                <span>Total</span>
-                <span>₦{finalPrice.toLocaleString('en-NG')}</span>
-              </div>
+        <div style={{
+          background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)',
+          borderRadius: 14, padding: 20, marginTop: 16,
+        }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+              <span>{PRICING.plans[selectedPlan].label} Plan</span>
+              <span>₦{currentPrice.toLocaleString('en-NG')}</span>
             </div>
-
-            <button
-              onClick={handleSubscribe}
-              disabled={submitting || !userId}
-              style={{
-                width: '100%', padding: 14,
-                background: submitting ? '#64748b' : '#0f172a',
-                color: '#ffffff', border: 'none', borderRadius: 10,
-                fontSize: 15, fontWeight: 700,
-                cursor: submitting ? 'not-allowed' : 'pointer',
-                fontFamily: 'system-ui, sans-serif',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'background 0.15s ease',
-              }}
-            >
-              {submitting ? (
-                <>
-                  <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  Redirecting to payment...
-                </>
-              ) : (
-                <>
-                  <LockIcon />
-                  Pay ₦{finalPrice.toLocaleString('en-NG')} securely
-                </>
-              )}
-            </button>
-
-            <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 12, lineHeight: 1.5 }}>
-              Secured by Paystack. Your card details are never stored.
-            </p>
+            {couponApplied && couponDiscount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#16a34a', marginBottom: 8 }}>
+                <span>Coupon discount</span>
+                <span>- ₦{couponDiscount.toLocaleString('en-NG')}</span>
+              </div>
+            )}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between',
+              fontSize: 16, fontWeight: 700, color: '#0f172a',
+              paddingTop: 10, borderTop: '1px solid rgba(15,23,42,0.06)',
+            }}>
+              <span>Total</span>
+              <span>₦{finalPrice.toLocaleString('en-NG')}</span>
+            </div>
           </div>
-        )}
+
+          <button
+            onClick={handleSubscribe}
+            disabled={submitting || !userId}
+            style={{
+              width: '100%', padding: 14,
+              background: submitting ? '#64748b' : '#0f172a',
+              color: '#ffffff', border: 'none', borderRadius: 10,
+              fontSize: 15, fontWeight: 700,
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              fontFamily: 'system-ui, sans-serif',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              transition: 'background 0.15s ease',
+            }}
+          >
+            {submitting ? (
+              <>
+                <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#ffffff', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                Redirecting to payment...
+              </>
+            ) : (
+              <>
+                <LockIcon />
+                Pay ₦{finalPrice.toLocaleString('en-NG')} securely
+              </>
+            )}
+          </button>
+
+          <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 12, lineHeight: 1.5 }}>
+            Secured by Paystack. Your card details are never stored.
+          </p>
+        </div>
 
         {/* WhatsApp support */}
         {whatsappNumber && (
@@ -529,8 +456,7 @@ function SubscribeContent() {
             Need help?{' '}
             <a
               href={`https://wa.me/${whatsappNumber}`}
-              target="_blank"
-              rel="noopener noreferrer"
+              target="_blank" rel="noopener noreferrer"
               style={{ color: '#16a34a', fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               <WhatsAppIcon /> Chat with us on WhatsApp
@@ -542,26 +468,18 @@ function SubscribeContent() {
   )
 }
 
-// ─── Spinner fallback ─────────────────────────────────────────────────────────
+// ─── Fallback ─────────────────────────────────────────────────────────────────
 
 function LoadingFallback() {
   return (
-    <div style={{
-      minHeight: '100vh', background: '#faf9f7',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
+    <div style={{ minHeight: '100vh', background: '#faf9f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      <div style={{
-        width: 32, height: 32,
-        border: '3px solid rgba(15,23,42,0.1)',
-        borderTopColor: '#0f172a', borderRadius: '50%',
-        animation: 'spin 1s linear infinite',
-      }} />
+      <div style={{ width: 32, height: 32, border: '3px solid rgba(15,23,42,0.1)', borderTopColor: '#0f172a', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
     </div>
   )
 }
 
-// ─── Default export — Suspense wrapper is HERE, at the top level ──────────────
+// ─── Default export ───────────────────────────────────────────────────────────
 
 export default function SubscribePage() {
   return (
@@ -569,4 +487,5 @@ export default function SubscribePage() {
       <SubscribeContent />
     </Suspense>
   )
-           }
+  }
+   
