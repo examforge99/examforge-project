@@ -241,46 +241,8 @@ export async function POST(request: Request) {
 
     // ── Update streak ─────────────────────────────────────────────────────────
 
-    const today = new Date().toISOString().split('T')[0]  // YYYY-MM-DD
-
-    const { data: streak } = await supabaseAdmin
-      .from('streaks')
-      .select('current_streak_days, longest_streak, last_study_date, streak_active')
-      .eq('clerk_user_id', user_id)
-      .maybeSingle()
-
-    if (streak) {
-      const lastStudy = streak.last_study_date
-      const alreadyStudiedToday = lastStudy === today
-
-      if (!alreadyStudiedToday) {
-        const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0]
-        const wasYesterday = lastStudy === yesterday
-        const newStreakDays = wasYesterday ? streak.current_streak_days + 1 : 1
-        const newLongest   = Math.max(newStreakDays, streak.longest_streak ?? 0)
-
-        await supabaseAdmin
-          .from('streaks')
-          .update({
-            current_streak_days: newStreakDays,
-            longest_streak:      newLongest,
-            last_study_date:     today,
-            streak_active:       true,
-          })
-          .eq('clerk_user_id', user_id)
-      }
-    } else {
-      // First time — create streak row
-      await supabaseAdmin
-        .from('streaks')
-        .insert({
-          clerk_user_id:       user_id,
-          current_streak_days: 1,
-          longest_streak:      1,
-          last_study_date:     today,
-          streak_active:       true,
-        })
-    }
+    const streakResult = await updateStreak(user_id)
+    
 
     // ── Return full results ───────────────────────────────────────────────────
 
