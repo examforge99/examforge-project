@@ -6,7 +6,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { auth } from '@clerk/nextjs/server'
-import { updateStreaks } from '@lib/streaks'
+import { updateStreak } from '@/lib/streaks'
 
 export const dynamic = 'force-dynamic'
 
