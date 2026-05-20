@@ -242,6 +242,18 @@ export async function POST(request: Request) {
     // ── Update streak ─────────────────────────────────────────────────────────
 
     const streakResult = await updateStreak(user_id)
+
+    return Response.json({
+  session_id,
+  score:              totalScore,
+  total,
+  percentage,
+  time_taken_seconds: time_taken_seconds ?? null,
+  by_subject:         bySubject,
+  results:            gradedResults,
+  streak:             streakResult,   // ← add this
+  ai_feedback:        null,
+})
     
 
     // ── Return full results ───────────────────────────────────────────────────
