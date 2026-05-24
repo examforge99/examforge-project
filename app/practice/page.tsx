@@ -554,4 +554,456 @@ export default function CBTPracticePage() {
               onClick={() => router.push('/dashboard')}
               style={{
                 padding: '10px 24px', background: '#1d4ed8', color: '#ffffff',
-                bor
+                border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Back to Dashboard
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{
+              width: 48, height: 48, borderRadius: '50%',
+              border: '3px solid #1d4ed8', borderTopColor: 'transparent',
+              animation: 'spin 0.9s linear infinite',
+            }} />
+            <p style={{ fontSize: 14, color: '#64748b' }}>
+              Setting up your {modeParam === 'cbt' ? 'CBT exam' : modeParam === 'mock' ? 'mock exam' : 'practice session'}…
+            </p>
+          </>
+        )}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  // ── Submitting screen ──────────────────────────────────────────────────────
+
+  if (phase === 'submitting' || phase === 'submitted') {
+    return (
+      <div style={{
+        minHeight: '100vh', background: '#faf9f7',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        gap: 16, fontFamily: 'system-ui',
+      }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: '50%',
+          border: '3px solid #1d4ed8', borderTopColor: 'transparent',
+          animation: 'spin 0.9s linear infinite',
+        }} />
+        <p style={{ fontSize: 14, color: '#64748b' }}>Grading your answers…</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  // ── Main exam UI ───────────────────────────────────────────────────────────
+
+  const options = currentQuestion ? getOptions(currentQuestion) : []
+  const selectedAnswer = currentQuestion ? answers[currentQuestion.id] : undefined
+  const isFlagged = currentQuestion ? flagged.has(currentQuestion.id) : false
+
+  // Global question number across all subjects
+  const globalQuestionNumber = subjectData
+    .slice(0, activeSubjectIdx)
+    .reduce((sum, s) => sum + s.questions.length, 0) + currentQuestionIdx + 1
+  const globalTotal = subjectData.reduce((sum, s) => sum + s.questions.length, 0)
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#faf9f7', fontFamily: 'system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        @keyframes popIn {
+          from { transform: scale(0.85); opacity: 0; }
+          to   { transform: scale(1);    opacity: 1; }
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      {/* ── Top bar ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a6e 100%)',
+        padding: '12px 16px',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', gap: 12,
+        position: 'sticky', top: 0, zIndex: 50,
+      }}>
+        {/* Left — exit */}
+        <button
+          onClick={() => {
+            if (confirm('Exit exam? Your progress will be lost.')) {
+              router.push('/dashboard')
+            }
+          }}
+          style={{
+            background: 'rgba(255,255,255,0.1)', border: 'none',
+            borderRadius: 8, padding: '6px 10px',
+            color: '#ffffff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 4,
+            fontSize: 12, fontWeight: 600,
+          }}
+        >
+          <Icons.ChevronLeft /> Exit
+        </button>
+
+        {/* Center — timer */}
+        {timeLeft !== null && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            color: timerColor, fontFamily: 'Georgia, serif',
+            fontSize: 18, fontWeight: 900, letterSpacing: '0.04em',
+            transition: 'color 0.5s ease',
+          }}>
+            <span style={{ color: timerColor, opacity: 0.7 }}><Icons.Clock /></span>
+            {formatTime(timeLeft)}
+          </div>
+        )}
+
+        {/* Right — grid + submit */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setShowGrid(true)}
+            style={{
+              background: 'rgba(255,255,255,0.1)', border: 'none',
+              borderRadius: 8, padding: '6px 10px',
+              color: '#ffffff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 12, fontWeight: 600,
+            }}
+          >
+            <Icons.Grid /> {answeredCount}/{globalTotal}
+          </button>
+          <button
+            onClick={() => setShowSubmit(true)}
+            style={{
+              background: '#1d4ed8', border: 'none',
+              borderRadius: 8, padding: '6px 14px',
+              color: '#ffffff', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700,
+            }}
+          >
+            Submit
+          </button>
+        </div>
+      </div>
+
+      {/* ── Subject tabs ── */}
+      <div style={{
+        background: '#ffffff',
+        borderBottom: '1px solid rgba(15,23,42,0.07)',
+        display: 'flex', overflowX: 'auto',
+        scrollbarWidth: 'none',
+        padding: '0 16px',
+      }}>
+        {subjectData.map((s, i) => {
+          const isActive    = i === activeSubjectIdx
+          const subAnswered = s.questions.filter(q => answers[q.id] !== null && answers[q.id] !== undefined).length
+          return (
+            <button
+              key={s.subject}
+              onClick={() => { setActiveSubjectIdx(i); setCurrentQuestionIdx(0) }}
+              style={{
+                flexShrink: 0,
+                padding: '12px 14px',
+                background: 'none', border: 'none',
+                borderBottom: `2.5px solid ${isActive ? '#1d4ed8' : 'transparent'}`,
+                color: isActive ? '#1d4ed8' : '#64748b',
+                fontSize: 12, fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              }}
+            >
+              <span>{s.subject.replace('Use of English', 'English').replace('Literature in English', 'Literature')}</span>
+              <span style={{ fontSize: 10, color: isActive ? '#1d4ed8' : '#94a3b8', fontWeight: 600 }}>
+                {s.loaded ? `${subAnswered}/${s.questions.length}` : '…'}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── Question area ── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', maxWidth: 680, margin: '0 auto', width: '100%' }}>
+
+        {/* Loading subject questions */}
+        {activeSubject?.loading && (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#64748b' }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%',
+              border: '2.5px solid #1d4ed8', borderTopColor: 'transparent',
+              animation: 'spin 0.9s linear infinite', margin: '0 auto 14px',
+            }} />
+            <p style={{ fontSize: 13 }}>Loading {activeSubject.subject} questions…</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {activeSubject?.error && (
+          <div style={{
+            background: '#fef2f2', border: '1px solid #fecaca',
+            borderRadius: 12, padding: '16px 20px', textAlign: 'center',
+          }}>
+            <p style={{ color: '#dc2626', fontSize: 13, margin: '0 0 12px' }}>{activeSubject.error}</p>
+            <button
+              onClick={() => setSubjectData(prev => prev.map((s, i) =>
+                i === activeSubjectIdx ? { ...s, error: null, loaded: false } : s
+              ))}
+              style={{
+                padding: '8px 20px', background: '#1d4ed8', color: '#ffffff',
+                border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Question card */}
+        {currentQuestion && !activeSubject?.loading && (
+          <div style={{ animation: 'fadeIn 0.2s ease' }}>
+
+            {/* Question meta */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: 16,
+            }}>
+              <div>
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: '#1d4ed8',
+                  background: '#eff6ff', borderRadius: 6, padding: '3px 8px',
+                  fontFamily: 'system-ui',
+                }}>
+                  {currentQuestion.subject.replace('Use of English', 'English').replace('Literature in English', 'Literature')}
+                </span>
+                {currentQuestion.topic && (
+                  <span style={{
+                    fontSize: 11, color: '#94a3b8',
+                    fontFamily: 'system-ui', marginLeft: 8,
+                  }}>
+                    {currentQuestion.topic}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {currentQuestion.year && (
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui' }}>
+                    {currentQuestion.year}
+                  </span>
+                )}
+                <button
+                  onClick={() => toggleFlag(currentQuestion.id)}
+                  style={{
+                    background: isFlagged ? '#fef3c7' : 'none',
+                    border: `1px solid ${isFlagged ? '#f59e0b' : '#e2e8f0'}`,
+                    borderRadius: 6, padding: '4px 8px',
+                    color: isFlagged ? '#d97706' : '#94a3b8',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: 11, fontWeight: 600, fontFamily: 'system-ui',
+                  }}
+                >
+                  <Icons.Flag /> {isFlagged ? 'Flagged' : 'Flag'}
+                </button>
+              </div>
+            </div>
+
+            {/* Question number */}
+            <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui', marginBottom: 8 }}>
+              Question {currentQuestionIdx + 1} of {questions.length}
+              <span style={{ color: '#cbd5e1', margin: '0 6px' }}>·</span>
+              <span style={{ color: '#64748b' }}>{globalQuestionNumber} of {globalTotal} overall</span>
+            </div>
+
+            {/* Diagram */}
+            {currentQuestion.has_diagram && currentQuestion.diagram_image_url && (
+              <div style={{
+                background: '#f8fafc', border: '1px solid #e2e8f0',
+                borderRadius: 12, padding: '16px', marginBottom: 16, textAlign: 'center',
+              }}>
+                <img
+                  src={currentQuestion.diagram_image_url}
+                  alt={currentQuestion.diagram_description ?? 'Diagram'}
+                  style={{ maxWidth: '100%', borderRadius: 8 }}
+                />
+                {currentQuestion.diagram_description && (
+                  <p style={{ fontSize: 12, color: '#64748b', margin: '8px 0 0', fontFamily: 'system-ui', fontStyle: 'italic' }}>
+                    {currentQuestion.diagram_description}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Question text */}
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(15,23,42,0.08)',
+              borderRadius: 14, padding: '20px',
+              marginBottom: 16,
+              boxShadow: '0 2px 12px rgba(15,23,42,0.05)',
+            }}>
+              <p style={{
+                fontSize: 15, color: '#0f172a',
+                lineHeight: 1.75, margin: 0,
+                fontFamily: 'Georgia, serif',
+                fontWeight: 500,
+              }}>
+                {currentQuestion.question_text}
+              </p>
+            </div>
+
+            {/* Options */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {options.map((option, idx) => {
+                const isSelected = selectedAnswer === idx
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleAnswer(currentQuestion.id, idx)}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 12,
+                      padding: '14px 16px',
+                      background: isSelected ? '#eff6ff' : '#ffffff',
+                      border: `1.5px solid ${isSelected ? '#1d4ed8' : 'rgba(15,23,42,0.08)'}`,
+                      borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                      boxShadow: isSelected ? '0 0 0 3px rgba(29,78,216,0.1)' : 'none',
+                    }}
+                  >
+                    {/* Option label */}
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                      background: isSelected ? '#1d4ed8' : '#f1f5f9',
+                      border: `1.5px solid ${isSelected ? '#1d4ed8' : '#e2e8f0'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: 700,
+                      color: isSelected ? '#ffffff' : '#475569',
+                      fontFamily: 'system-ui',
+                      transition: 'all 0.15s ease',
+                    }}>
+                      {OPTION_LABELS[idx]}
+                    </div>
+                    <span style={{
+                      fontSize: 14, color: isSelected ? '#1d4ed8' : '#0f172a',
+                      lineHeight: 1.6, fontFamily: 'system-ui',
+                      fontWeight: isSelected ? 500 : 400,
+                      paddingTop: 4,
+                    }}>
+                      {option}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Navigation buttons */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
+              <button
+                onClick={goPrev}
+                disabled={activeSubjectIdx === 0 && currentQuestionIdx === 0}
+                style={{
+                  flex: 1, padding: '13px',
+                  background: '#ffffff',
+                  border: '1.5px solid rgba(15,23,42,0.1)',
+                  borderRadius: 12, fontSize: 13, fontWeight: 600,
+                  color: '#475569', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: (activeSubjectIdx === 0 && currentQuestionIdx === 0) ? 0.4 : 1,
+                  fontFamily: 'system-ui',
+                }}
+              >
+                <Icons.ChevronLeft /> Previous
+              </button>
+
+              {/* Is last question of last subject */}
+              {activeSubjectIdx === subjectData.length - 1 && currentQuestionIdx === questions.length - 1
+                ? (
+                  <button
+                    onClick={() => setShowSubmit(true)}
+                    style={{
+                      flex: 1, padding: '13px',
+                      background: '#1d4ed8', border: 'none',
+                      borderRadius: 12, fontSize: 13, fontWeight: 700,
+                      color: '#ffffff', cursor: 'pointer', fontFamily: 'system-ui',
+                    }}
+                  >
+                    Finish & Submit
+                  </button>
+                ) : (
+                  <button
+                    onClick={goNext}
+                    style={{
+                      flex: 1, padding: '13px',
+                      background: '#1d4ed8', border: 'none',
+                      borderRadius: 12, fontSize: 13, fontWeight: 700,
+                      color: '#ffffff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      fontFamily: 'system-ui',
+                    }}
+                  >
+                    Next <Icons.ChevronRight />
+                  </button>
+                )
+              }
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Progress bar ── */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: '#ffffff', borderTop: '1px solid rgba(15,23,42,0.07)',
+        padding: '10px 16px 16px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui' }}>
+            {answeredCount} of {globalTotal} answered
+          </span>
+          <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui' }}>
+            {globalTotal > 0 ? Math.round((answeredCount / globalTotal) * 100) : 0}%
+          </span>
+        </div>
+        <div style={{ height: 4, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
+          <div style={{
+            height: '100%',
+            width: `${globalTotal > 0 ? (answeredCount / globalTotal) * 100 : 0}%`,
+            background: 'linear-gradient(90deg, #1d4ed8, #3b82f6)',
+            borderRadius: 99, transition: 'width 0.4s ease',
+          }} />
+        </div>
+      </div>
+
+      {/* ── Overlays ── */}
+      {showGrid && (
+        <QuestionGrid
+          questions={allQuestions}
+          answers={answers}
+          flagged={flagged}
+          currentIndex={subjectData.slice(0, activeSubjectIdx).reduce((sum, s) => sum + s.questions.length, 0) + currentQuestionIdx}
+          onJump={jumpToQuestion}
+          onClose={() => setShowGrid(false)}
+        />
+      )}
+
+      {showSubmit && (
+        <SubmitModal
+          totalQuestions={globalTotal}
+          answeredCount={answeredCount}
+          flaggedCount={flagged.size}
+          onConfirm={() => handleSubmit(false)}
+          onCancel={() => setShowSubmit(false)}
+          submitting={submitting}
+        />
+      )}
+    </div>
+  )
+              }
