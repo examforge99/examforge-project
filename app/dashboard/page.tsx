@@ -470,5 +470,484 @@ function QuickAction({ label, description, href, accent, icon: Icon, badge }: {
           <span style={{
             fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
             textTransform: 'uppercase', color: accent,
-            backgrou
+            background: `${accent}12`, border: `1px solid ${accent}25`,
+            padding: '3px 8px', borderRadius: 99, fontFamily: 'system-ui',
+          }}>{badge}</span>
+        )}
+      </div>
+
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontFamily: 'Georgia, serif', marginBottom: 4, letterSpacing: '-0.2px' }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 12.5, color: '#64748b', fontFamily: 'system-ui', lineHeight: 1.6 }}>
+          {description}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: accent, fontSize: 12.5, fontWeight: 600, fontFamily: 'system-ui' }}>
+        Start <Icons.ArrowRight />
+      </div>
+    </button>
+  )
+}
+
+// ─── Section Header ───────────────────────────────────────────────────────────
+
+function SectionHeader({ title, subtitle, action, onAction }: {
+  title: string
+  subtitle?: string
+  action?: string
+  onAction?: () => void
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+      <div>
+        <h2 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', fontFamily: 'Georgia, serif', margin: 0, letterSpacing: '-0.3px' }}>
+          {title}
+        </h2>
+        {subtitle && (
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: '3px 0 0', fontFamily: 'system-ui' }}>{subtitle}</p>
+        )}
+      </div>
+      {action && (
+        <button onClick={onAction} style={{
+          fontSize: 12, fontWeight: 600, color: '#1d4ed8',
+          background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'system-ui',
+        }}>
+          {action}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const { userId, signOut } = useAuth()
+  const router = useRouter()
+
+  const [data, setData]             = useState<DashboardData | null>(null)
+  const [news, setNews]             = useState<NewsItem[]>([])
+  const [aiMessage, setAiMessage]   = useState<string | null>(null)
+  const [loading, setLoading]       = useState(true)
+  const [aiLoading, setAiLoading]   = useState(false)
+  const [error, setError]           = useState('')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // Fetch dashboard data
+  useEffect(() => {
+    if (!userId) return
+    const fetchDashboard = async () => {
+      try {
+        const [contextRes, newsRes] = await Promise.all([
+          fetch(`/api/student/context?user_id=${userId}`),
+          fetch('/api/news'),
+        ])
+        if (!contextRes.ok) throw new Error('Failed to load dashboard')
+        const contextData = await contextRes.json()
+        setData(contextData)
+        if (newsRes.ok) {
+          const newsData = await newsRes.json()
+          setNews(newsData.news ?? [])
+        }
+      } catch {
+        setError('Could not load your dashboard. Please refresh.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchDashboard()
+  }, [userId])
+
+  // Fetch AI welcome message
+  useEffect(() => {
+    if (!userId) return
+    const fetchWelcome = async () => {
+      setAiLoading(true)
+      try {
+        const res = await fetch('/api/ai/welcome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId }),
+        })
+        if (!res.ok) return
+        const d = await res.json()
+        if (!d.skipped && d.message) setAiMessage(d.message)
+      } catch { /* silent */ } finally {
+        setAiLoading(false)
+      }
+    }
+    fetchWelcome()
+  }, [userId])
+
+  const firstName      = data?.user?.full_name?.split(' ')[0] ?? 'there'
+  const subjects       = Object.entries(data?.accuracy_by_subject ?? {})
+  const weakTopics     = data?.weak_topics?.slice(0, 3) ?? []
+  const recentSessions = data?.recent_sessions?.slice(0, 4) ?? []
+  const hour           = new Date().getHours()
+  const greeting       = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const isNew          = !loading && (data?.milestones?.total_questions_answered ?? 0) === 0
+
+  const handleSignOut = async () => {
+    await signOut()
+    router.push('/login')
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#faf9f7', fontFamily: 'system-ui, sans-serif' }}>
+
+      <style>{`
+        @keyframes shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.5; }
+        }
+        .dash-section { animation: fadeSlideUp 0.4s ease both; }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
+
+      {/* Side Drawer */}
+      <SideDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        userData={data}
+        onSignOut={handleSignOut}
+      />
+
+      {/* ── Hero Header ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a6e 100%)',
+        padding: '0 20px 64px',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Grid texture */}
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.04, pointerEvents: 'none' }}>
+          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="dashgrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="0.8"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#dashgrid)" />
+          </svg>
+        </div>
+        {/* Glow */}
+        <div style={{
+          position: 'absolute', top: '-40px', right: '-60px',
+          width: '260px', height: '260px', borderRadius: '50%',
+          background: 'radial-gradient(ellipse, rgba(59,130,246,0.18) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        {/* Top bar inside hero */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 0', position: 'relative', zIndex: 2,
+        }}>
+          <button
+            onClick={() => setDrawerOpen(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+          >
+            <Icons.Menu />
+          </button>
+          <span style={{
+            fontFamily: 'Georgia, serif', fontSize: 17,
+            fontWeight: 700, color: '#ffffff', letterSpacing: '-0.2px',
+          }}>ExamForge</span>
+          <button
+            onClick={() => router.push('/notifications')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, position: 'relative' }}
+          >
+            <Icons.Bell />
+            <div style={{
+              position: 'absolute', top: 4, right: 4,
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#dc2626', border: '1.5px solid #0f172a',
+            }} />
+          </button>
+        </div>
+
+        {/* Greeting */}
+        <div style={{ position: 'relative', zIndex: 1, paddingTop: 12 }}>
+          {!loading && data?.user?.exam_type && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'rgba(29,78,216,0.25)',
+              border: '1px solid rgba(59,130,246,0.3)',
+              borderRadius: 99, padding: '4px 12px', marginBottom: 14,
+              animation: 'fadeIn 0.4s ease',
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#60a5fa' }} />
+              <span style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: '#93c5fd', fontFamily: 'system-ui',
+              }}>{data.user.exam_type} Preparation</span>
+            </div>
+          )}
+
+          {loading
+            ? <div style={{ marginBottom: 6 }}><Skeleton width="55%" height={32} radius={6} /></div>
+            : <h1 style={{
+                fontFamily: 'Georgia, serif',
+                fontSize: 'clamp(22px, 5vw, 30px)',
+                fontWeight: 900, color: '#ffffff',
+                margin: '0 0 8px', letterSpacing: '-0.5px', lineHeight: 1.2,
+                animation: 'fadeSlideUp 0.4s ease',
+              }}>
+                {greeting}, {firstName}
+              </h1>
+          }
+
+          {loading
+            ? <Skeleton width="40%" height={14} radius={4} />
+            : <p style={{
+                fontSize: 14, color: 'rgba(255,255,255,0.55)',
+                margin: 0, fontFamily: 'system-ui',
+                animation: 'fadeSlideUp 0.5s ease',
+              }}>
+                {isNew
+                  ? 'Welcome! Start your first practice session below.'
+                  : `${(data?.milestones?.total_questions_answered ?? 0).toLocaleString()} questions answered${(data?.streak?.current_streak_days ?? 0) > 0 ? ` · ${data?.streak?.current_streak_days}d streak 🔥` : ''}`
+                }
+              </p>
+          }
+        </div>
+      </div>
+
+      {/* ── Content overlapping header ── */}
+      <div style={{ maxWidth: 680, margin: '-36px auto 0', padding: '0 16px 100px', position: 'relative', zIndex: 2 }}>
+
+        {/* ── Stats Row ── */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 10, marginBottom: 20,
+          animation: 'fadeSlideUp 0.4s ease 0.05s both',
+        }}>
+          {[
+            { label: 'Questions', value: loading ? null : (data?.milestones?.total_questions_answered ?? 0).toLocaleString(), Icon: Icons.BookOpen, color: '#1d4ed8', bg: 'rgba(29,78,216,0.08)' },
+            { label: 'Accuracy',  value: loading ? null : `${data?.milestones?.overall_accuracy ?? 0}%`,                       Icon: Icons.Target,   color: '#16a34a', bg: 'rgba(22,163,74,0.08)' },
+            { label: 'Streak',    value: loading ? null : `${data?.streak?.current_streak_days ?? 0}d`,                        Icon: Icons.Flame,    color: '#d97706', bg: 'rgba(217,119,6,0.08)' },
+          ].map(({ label, value, Icon, color, bg }) => (
+            <div key={label} style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(15,23,42,0.08)',
+              borderRadius: 14, padding: '16px 12px', textAlign: 'center',
+              boxShadow: '0 2px 12px rgba(15,23,42,0.06)',
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: bg, color,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 10px',
+              }}>
+                <Icon />
+              </div>
+              {loading
+                ? <div style={{ display: 'flex', justifyContent: 'center' }}><Skeleton width="55%" height={22} radius={4} /></div>
+                : <div style={{ fontSize: 22, fontWeight: 900, fontFamily: 'Georgia, serif', color: '#0f172a', lineHeight: 1 }}>{value}</div>
+              }
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontWeight: 500, letterSpacing: '0.03em' }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── AI Coach Card ── */}
+        {(aiLoading || aiMessage) && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '18px 20px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.05)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: aiLoading ? 0 : 12 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: '50%', background: '#0f172a',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#ffffff', flexShrink: 0,
+              }}>
+                <Icons.Sparkle />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'system-ui' }}>ExamForge AI</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui' }}>Your study coach</div>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: '#1d4ed8',
+                background: '#eff6ff', borderRadius: 6, padding: '3px 7px', fontFamily: 'system-ui',
+              }}>AI</span>
+            </div>
+            {aiLoading
+              ? <Skeleton width="70%" height={14} />
+              : <p style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.75, margin: 0, fontFamily: 'Georgia, serif' }}>{aiMessage}</p>
+            }
+          </div>
+        )}
+
+        {/* ── Exam Countdown ── */}
+        {!loading && data?.exam_info && (
+          <div className="dash-section" style={{
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e3a6e 100%)',
+            borderRadius: 16, padding: '22px 24px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexWrap: 'wrap', gap: 16,
+            boxShadow: '0 4px 24px rgba(15,23,42,0.15)',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{
+              position: 'absolute', top: 0, right: 0,
+              width: '180px', height: '100%',
+              background: 'radial-gradient(ellipse at right, rgba(59,130,246,0.12), transparent)',
+              pointerEvents: 'none',
+            }} />
+            <div>
+              <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6, fontWeight: 700 }}>
+                {data.exam_info.exam_name}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontFamily: 'Georgia, serif', fontSize: 44, fontWeight: 900, color: '#ffffff', lineHeight: 1 }}>
+                  {data.exam_info.days_until}
+                </span>
+                <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}>days left</span>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>Exam date</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#ffffff' }}>
+                {new Date(data.exam_info.exam_date).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </div>
+              {data.user.target_score && (
+                <div style={{ fontSize: 12, color: '#60a5fa', marginTop: 6 }}>
+                  Target: {data.user.target_score}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Empty state for new users ── */}
+        {isNew && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px dashed rgba(15,23,42,0.12)',
+            borderRadius: 16, padding: '28px 20px',
+            textAlign: 'center', marginBottom: 24,
+          }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: 12,
+              background: '#eff6ff', color: '#1d4ed8',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 14px',
+            }}>
+              <Icons.Sparkle />
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', fontFamily: 'Georgia, serif', marginBottom: 6 }}>
+              Start your first session
+            </div>
+            <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, margin: '0 0 18px', fontFamily: 'system-ui' }}>
+              Pick any practice mode below. After your first session, your performance stats and AI coaching will appear here.
+            </p>
+            <button
+              onClick={() => router.push('/practice')}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '10px 22px', background: '#1d4ed8', color: '#ffffff',
+                border: 'none', borderRadius: 10,
+                fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui',
+              }}
+            >
+              Choose a mode <Icons.ArrowRight />
+            </button>
+          </div>
+        )}
+
+        {/* ── Practice Modes ── */}
+        <div className="dash-section" style={{ marginBottom: 28 }}>
+          <SectionHeader
+            title="Practice"
+            subtitle="Choose your session type"
+            action="See all"
+            onAction={() => router.push('/practice')}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+            <QuickAction
+              label="CBT Session"
+              description="Full JAMB combo with 2-hour timer and real exam conditions"
+              href="/practice?mode=cbt"
+              accent="#1d4ed8"
+              icon={Icons.Clock}
+              badge="Recommended"
+            />
+            <QuickAction
+              label="Free Practice"
+              description="Pick subject, topic, and question count"
+              href="/practice?mode=free_practice"
+              accent="#16a34a"
+              icon={Icons.BookOpen}
+            />
+            <QuickAction
+              label="Mock Exam"
+              description="Custom subjects with your own time limit"
+              href="/practice?mode=mock"
+              accent="#7c3aed"
+              icon={Icons.Target}
+            />
+          </div>
+        </div>
+
+        {/* ── Subject Performance ── */}
+        {!loading && subjects.length > 0 && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '20px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.05)',
+          }}>
+            <SectionHeader
+              title="Subject Performance"
+              action="Details"
+              onAction={() => router.push('/progress')}
+            />
+            {subjects.map(([subject, accuracy]) => (
+              <AccuracyBar key={subject} subject={subject} accuracy={accuracy} />
+            ))}
+          </div>
+        )}
+
+        {/* ── Weak Topics ── */}
+        {!loading && weakTopics.length > 0 && (
+          <div className="dash-section" style={{
+            background: '#fffbeb',
+            border: '1.5px solid #fde68a',
+            borderRadius: 16, padding: '20px',
+            marginBottom: 20,
+          }}>
+            <SectionHeader title="Needs Attention" subtitle="Topics below 50% accuracy" />
+            {weakTopics.map((t, i) => (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '10px 0',
+                borderBottom: i < weakTopics.length - 1 ? '1px solid #fde68a' : 'none',
+              }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui' }}>{t.topic}</div>
+                  <div style={{ fontSize: 11, color: '#92400e', fontFamily: 'system-ui' }}>{t.subject}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#d97706' }}>
+                  <Icons.AlertTriangle />
+                  <span sty
             
