@@ -949,5 +949,132 @@ export default function DashboardPage() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#d97706' }}>
                   <Icons.AlertTriangle />
-                  <span sty
+                  <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'system-ui' }}>{t.accuracy}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Recent Sessions ── */}
+        {!loading && recentSessions.length > 0 && (
+          <div className="dash-section" style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(15,23,42,0.08)',
+            borderRadius: 16, padding: '20px',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(15,23,42,0.05)',
+          }}>
+            <SectionHeader
+              title="Recent Sessions"
+              action="View all"
+              onAction={() => router.push('/history')}
+            />
+            {recentSessions.map((s, i) => {
+              const pct   = s.percentage ?? (s.total_questions > 0 ? Math.round((s.score / s.total_questions) * 100) : 0)
+              const color = pct >= 70 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626'
+              return (
+                <div key={s.session_id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '11px 14px', background: '#faf9f7', borderRadius: 12,
+                  marginBottom: i < recentSessions.length - 1 ? 8 : 0,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui' }}>Practice Session</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, fontFamily: 'system-ui' }}>
+                      {new Date(s.date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+                      {' · '}{s.total_questions} questions
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color, fontFamily: 'Georgia, serif' }}>{pct}%</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui' }}>{s.score}/{s.total_questions}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── News carousel ── */}
+        {news.length > 0 && (
+          <div className="dash-section" style={{ marginBottom: 20 }}>
+            <SectionHeader
+              title="News & Updates"
+              action="See more"
+              onAction={() => router.push('/news')}
+            />
+            <div style={{
+              display: 'flex', gap: 10, overflowX: 'auto',
+              scrollbarWidth: 'none',
+              marginLeft: -16, marginRight: -16,
+              paddingLeft: 16, paddingRight: 16,
+            }}>
+              {news.slice(0, 5).map((item) => (
+                <div key={item.id} style={{
+                  flexShrink: 0, width: 230,
+                  background: '#ffffff',
+                  border: '1.5px solid rgba(15,23,42,0.07)',
+                  borderRadius: 14, padding: '16px',
+                  boxShadow: '0 1px 6px rgba(15,23,42,0.04)',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'Georgia, serif', lineHeight: 1.4, marginBottom: 8 }}>
+                    {item.headline}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, fontFamily: 'system-ui', marginBottom: 10 }}>
+                    {item.body.slice(0, 80)}…
+                  </div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'system-ui' }}>
+                    {new Date(item.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Subscribe banner — free users only ── */}
+        {!loading && data?.subscription?.status !== 'active' && (
+          <button
+            onClick={() => router.push('/subscribe')}
+            className="dash-section"
+            style={{
+              width: '100%',
+              background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
+              borderRadius: 16, padding: '22px 24px',
+              border: 'none', cursor: 'pointer', textAlign: 'left',
+              marginBottom: 20,
+              boxShadow: '0 4px 20px rgba(29,78,216,0.25)',
+            }}
+          >
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontFamily: 'system-ui', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>
+              Upgrade
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff', fontFamily: 'Georgia, serif', marginBottom: 6 }}>
+              Unlock unlimited access
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', fontFamily: 'system-ui', lineHeight: 1.5, marginBottom: 16 }}>
+              Full question bank, AI explanations, detailed analytics and more.
+            </div>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: '#ffffff', color: '#1d4ed8',
+              borderRadius: 8, padding: '8px 18px',
+              fontSize: 13, fontWeight: 700, fontFamily: 'system-ui',
+            }}>
+              View Plans <Icons.ArrowRight />
+            </div>
+          </button>
+        )}
+
+        {error && (
+          <p style={{ textAlign: 'center', color: '#dc2626', fontSize: 13, fontFamily: 'system-ui' }}>{error}</p>
+        )}
+      </div>
+
+      {/* ── Bottom Nav ── */}
+      <BottomNav active="home" />
+    </div>
+  )
+                 }
             
