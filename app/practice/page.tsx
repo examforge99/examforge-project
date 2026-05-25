@@ -957,6 +957,7 @@ function CBTPracticeInner() {
           </div>
         )}
       </div>
+
       {/* ── Progress bar ── */}
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
@@ -1005,5 +1006,4 @@ function CBTPracticeInner() {
       )}
     </div>
   )
-      }
-                       
+    }
