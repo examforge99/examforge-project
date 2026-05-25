@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -314,7 +314,7 @@ function SubmitModal({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function CBTPracticePage() {
+function CBTPracticeInner() {
   const { userId } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -957,7 +957,6 @@ export default function CBTPracticePage() {
           </div>
         )}
       </div>
-
       {/* ── Progress bar ── */}
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0,
@@ -1006,4 +1005,5 @@ export default function CBTPracticePage() {
       )}
     </div>
   )
-              }
+      }
+                       
