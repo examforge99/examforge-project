@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     let weakestTopicSubject: string | null = null
     let lowestAcc = Infinity
 
-    for (const [key, val] of topicMap.entries()) {
+    for (const [key, val] of Array.from(topicMap.entries())) {
       if (val.total < 2) continue
       const acc = val.correct / val.total
       if (acc < lowestAcc) {
@@ -202,4 +202,4 @@ Keep it to 4–5 sentences max. Sound like a personal coach who studied their da
     await logError('AI_POST_TEST_FAILED', err.message, null, { stack: err.stack ?? null })
     return Response.json({ error: err.message }, { status: 500 })
   }
-}
+      }
