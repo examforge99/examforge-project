@@ -39,6 +39,12 @@ interface ResultsData {
   results: QuestionResult[]
 }
 
+interface AIReview {
+  narrative: string
+  next_topic: string | null
+  next_subject: string | null
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E']
@@ -53,11 +59,11 @@ function formatTime(seconds: number): string {
 }
 
 function getGrade(percentage: number): { grade: string; color: string; bg: string } {
-  if (percentage >= 80) return { grade: 'A',  color: '#16a34a', bg: '#f0fdf4' }
-  if (percentage >= 70) return { grade: 'B',  color: '#2563eb', bg: '#eff6ff' }
-  if (percentage >= 60) return { grade: 'C',  color: '#d97706', bg: '#fffbeb' }
-  if (percentage >= 50) return { grade: 'D',  color: '#ea580c', bg: '#fff7ed' }
-  return                        { grade: 'F',  color: '#dc2626', bg: '#fef2f2' }
+  if (percentage >= 80) return { grade: 'A', color: '#16a34a', bg: '#f0fdf4' }
+  if (percentage >= 70) return { grade: 'B', color: '#2563eb', bg: '#eff6ff' }
+  if (percentage >= 60) return { grade: 'C', color: '#d97706', bg: '#fffbeb' }
+  if (percentage >= 50) return { grade: 'D', color: '#ea580c', bg: '#fff7ed' }
+  return                        { grade: 'F', color: '#dc2626', bg: '#fef2f2' }
 }
 
 function getScoreMessage(percentage: number): string {
@@ -65,7 +71,7 @@ function getScoreMessage(percentage: number): string {
   if (percentage >= 70) return 'Good job! Keep it up 👍'
   if (percentage >= 60) return 'Not bad — room to grow 📈'
   if (percentage >= 50) return 'You passed, but review the misses 📚'
-  return 'Keep studying — you\'ll get there 💪'
+  return "Keep studying — you'll get there 💪"
 }
 
 // ─── Score Ring ────────────────────────────────────────────────────────────────
@@ -104,24 +110,108 @@ function ScoreRing({ percentage, grade, color }: { percentage: number; grade: st
   )
 }
 
+// ─── AI Review Card ────────────────────────────────────────────────────────────
+
+function AIReviewCard({ review, loading }: { review: AIReview | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <div style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        borderRadius: 16, padding: '18px 16px', marginBottom: 16,
+        border: '1px solid #334155',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'rgba(59,130,246,0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 14,
+          }}>🤖</div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', fontFamily: 'system-ui', letterSpacing: '0.05em' }}>
+            AI COACH REVIEW
+          </span>
+        </div>
+        {/* Skeleton lines */}
+        {[100, 85, 92, 60].map((w, i) => (
+          <div key={i} style={{
+            height: 12, borderRadius: 6,
+            background: 'rgba(255,255,255,0.08)',
+            width: `${w}%`, marginBottom: 8,
+            animation: 'pulse 1.5s ease-in-out infinite',
+            animationDelay: `${i * 0.15}s`,
+          }} />
+        ))}
+        <style>{`@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.8} }`}</style>
+      </div>
+    )
+  }
+
+  if (!review) return null
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+      borderRadius: 16, padding: '18px 16px', marginBottom: 16,
+      border: '1px solid #334155',
+      animation: 'fadeIn 0.5s ease',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '50%',
+          background: 'rgba(59,130,246,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14,
+        }}>🤖</div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', fontFamily: 'system-ui', letterSpacing: '0.05em' }}>
+          AI COACH REVIEW
+        </span>
+      </div>
+
+      {/* Narrative */}
+      <p style={{
+        fontSize: 14, lineHeight: 1.7,
+        color: '#e2e8f0', margin: '0 0 14px',
+        fontFamily: 'Georgia, serif',
+      }}>
+        {review.narrative}
+      </p>
+
+      {/* Next focus pill */}
+      {(review.next_subject || review.next_topic) && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: 'rgba(59,130,246,0.15)',
+          border: '1px solid rgba(59,130,246,0.3)',
+          borderRadius: 20, padding: '6px 12px',
+        }}>
+          <span style={{ fontSize: 10, color: '#93c5fd', fontFamily: 'system-ui' }}>🎯 FOCUS NEXT</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#60a5fa', fontFamily: 'system-ui' }}>
+            {review.next_topic
+              ? `${review.next_topic}${review.next_subject ? ` · ${review.next_subject}` : ''}`
+              : review.next_subject}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Question Review Card ──────────────────────────────────────────────────────
 
-function QuestionCard({ q, index }: { q: QuestionResult; index: number }) {
+function QuestionCard({ q }: { q: QuestionResult }) {
   const [expanded, setExpanded] = useState(false)
 
   const statusColor = q.skipped ? '#94a3b8' : q.is_correct ? '#16a34a' : '#dc2626'
   const statusLabel = q.skipped ? 'Skipped' : q.is_correct ? 'Correct' : 'Wrong'
-  const statusBg    = q.skipped ? '#f8fafc' : q.is_correct ? '#f0fdf4' : '#fef2f2'
+  const statusBg    = q.skipped ? '#f8fafc'  : q.is_correct ? '#f0fdf4' : '#fef2f2'
 
   return (
     <div style={{
       background: '#ffffff',
       border: `1.5px solid ${q.skipped ? '#e2e8f0' : q.is_correct ? '#bbf7d0' : '#fecaca'}`,
-      borderRadius: 16,
-      overflow: 'hidden',
-      marginBottom: 10,
+      borderRadius: 16, overflow: 'hidden', marginBottom: 10,
     }}>
-      {/* Header row */}
       <button
         onClick={() => setExpanded(e => !e)}
         style={{
@@ -134,8 +224,8 @@ function QuestionCard({ q, index }: { q: QuestionResult; index: number }) {
           minWidth: 28, height: 28, borderRadius: '50%',
           background: statusBg, border: `1.5px solid ${statusColor}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, fontWeight: 700, color: statusColor, fontFamily: 'system-ui',
-          flexShrink: 0,
+          fontSize: 11, fontWeight: 700, color: statusColor,
+          fontFamily: 'system-ui', flexShrink: 0,
         }}>
           {q.question_number}
         </span>
@@ -165,27 +255,21 @@ function QuestionCard({ q, index }: { q: QuestionResult; index: number }) {
         </span>
       </button>
 
-      {/* Expanded review */}
       {expanded && (
         <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f1f5f9' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {q.options.map((opt, idx) => {
               const isSelected = q.selected_index === idx
               const isCorrect  = q.correct_index === idx
-
-              let bg     = '#f8fafc'
-              let border = '#e2e8f0'
-              let color  = '#334155'
-
-              if (isCorrect) { bg = '#f0fdf4'; border = '#16a34a'; color = '#15803d' }
+              let bg = '#f8fafc', border = '#e2e8f0', color = '#334155'
+              if (isCorrect)             { bg = '#f0fdf4'; border = '#16a34a'; color = '#15803d' }
               if (isSelected && !isCorrect) { bg = '#fef2f2'; border = '#dc2626'; color = '#dc2626' }
 
               return (
                 <div key={idx} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10,
                   padding: '10px 12px', borderRadius: 10,
-                  border: `1.5px solid ${border}`,
-                  background: bg,
+                  border: `1.5px solid ${border}`, background: bg,
                 }}>
                   <span style={{
                     minWidth: 22, height: 22, borderRadius: '50%',
@@ -198,7 +282,7 @@ function QuestionCard({ q, index }: { q: QuestionResult; index: number }) {
                   </span>
                   <span style={{ fontSize: 13, color, fontFamily: 'system-ui', lineHeight: 1.5 }}>
                     {opt}
-                    {isCorrect && <span style={{ fontSize: 10, marginLeft: 6, fontWeight: 700 }}>✓ Correct</span>}
+                    {isCorrect  && <span style={{ fontSize: 10, marginLeft: 6, fontWeight: 700 }}>✓ Correct</span>}
                     {isSelected && !isCorrect && <span style={{ fontSize: 10, marginLeft: 6, fontWeight: 700 }}>✗ Your answer</span>}
                   </span>
                 </div>
@@ -207,7 +291,7 @@ function QuestionCard({ q, index }: { q: QuestionResult; index: number }) {
           </div>
 
           {q.skipped && (
-            <p style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui', marginTop: 10, margin: '10px 0 0' }}>
+            <p style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui', margin: '10px 0 0' }}>
               This question was skipped.
             </p>
           )}
@@ -232,33 +316,33 @@ function QuestionCard({ q, index }: { q: QuestionResult; index: number }) {
   )
 }
 
-// ─── Filter Tab ────────────────────────────────────────────────────────────────
-
 type Filter = 'all' | 'correct' | 'wrong' | 'skipped'
 
 // ─── Inner Page ────────────────────────────────────────────────────────────────
 
 function ResultsInner() {
-  const router = useRouter()
+  const router      = useRouter()
   const searchParams = useSearchParams()
-  const session_id = searchParams.get('session_id')
+  const session_id  = searchParams.get('session_id')
 
-  const [data, setData]       = useState<ResultsData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState('')
-  const [filter, setFilter]   = useState<Filter>('all')
+  const [data, setData]           = useState<ResultsData | null>(null)
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState('')
+  const [filter, setFilter]       = useState<Filter>('all')
   const [activeTab, setActiveTab] = useState<'summary' | 'review'>('summary')
 
+  const [aiReview, setAiReview]         = useState<AIReview | null>(null)
+  const [aiLoading, setAiLoading]       = useState(false)
+  const [aiError, setAiError]           = useState('')
+
+  // ── 1. Fetch results ───────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (!session_id) {
-      setError('No session ID provided')
-      setLoading(false)
-      return
-    }
+    if (!session_id) { setError('No session ID provided'); setLoading(false); return }
 
     const fetchResults = async () => {
       try {
-        const res = await fetch(`/api/practice/results?session_id=${session_id}`)
+        const res  = await fetch(`/api/practice/results?session_id=${session_id}`)
         const json = await res.json()
         if (!res.ok) throw new Error(json.error ?? 'Failed to load results')
         setData(json)
@@ -272,7 +356,46 @@ function ResultsInner() {
     fetchResults()
   }, [session_id])
 
-  // ── Loading ──────────────────────────────────────────────────────────────────
+  // ── 2. Call post-test AI once results are loaded ───────────────────────────
+
+  useEffect(() => {
+    if (!data || aiReview || aiLoading) return
+
+    const fetchAIReview = async () => {
+      setAiLoading(true)
+      setAiError('')
+      try {
+        const res = await fetch('/api/ai/post-test', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id:         null, // will be resolved from auth() server-side
+            session_id:      data.session_id,
+            score:           data.score,
+            total_questions: data.total,
+            by_subject:      data.by_subject,
+            results:         data.results.map(r => ({
+              subject:    r.subject,
+              topic:      r.topic,
+              is_correct: r.is_correct,
+              skipped:    r.skipped,
+            })),
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error ?? 'AI review failed')
+        setAiReview(json)
+      } catch (err: any) {
+        setAiError(err.message)
+      } finally {
+        setAiLoading(false)
+      }
+    }
+
+    fetchAIReview()
+  }, [data])
+
+  // ── Loading ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -293,8 +416,6 @@ function ResultsInner() {
       </div>
     )
   }
-
-  // ── Error ────────────────────────────────────────────────────────────────────
 
   if (error || !data) {
     return (
@@ -322,6 +443,10 @@ function ResultsInner() {
 
   const { grade, color, bg } = getGrade(data.percentage)
 
+  const correctCount = data.results.filter(q => q.is_correct).length
+  const wrongCount   = data.results.filter(q => !q.is_correct && !q.skipped).length
+  const skippedCount = data.results.filter(q => q.skipped).length
+
   const filteredResults = data.results.filter(q => {
     if (filter === 'correct') return q.is_correct
     if (filter === 'wrong')   return !q.is_correct && !q.skipped
@@ -329,21 +454,18 @@ function ResultsInner() {
     return true
   })
 
-  const correctCount = data.results.filter(q => q.is_correct).length
-  const wrongCount   = data.results.filter(q => !q.is_correct && !q.skipped).length
-  const skippedCount = data.results.filter(q => q.skipped).length
-
   return (
     <>
       <style>{`
         * { box-sizing: border-box; }
-        @keyframes spin { to { transform: rotate(360deg) } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes spin    { to { transform: rotate(360deg) } }
+        @keyframes fadeIn  { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes pulse   { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
       `}</style>
 
       <div style={{ minHeight: '100vh', background: '#faf9f7', paddingBottom: 40 }}>
 
-        {/* ── Header ── */}
+        {/* ── Sticky header ── */}
         <div style={{
           background: '#0f172a', padding: '16px 16px 0',
           position: 'sticky', top: 0, zIndex: 100,
@@ -370,8 +492,7 @@ function ResultsInner() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: 0 }}>
+          <div style={{ display: 'flex' }}>
             {(['summary', 'review'] as const).map(tab => (
               <button
                 key={tab}
@@ -383,8 +504,7 @@ function ResultsInner() {
                   color: activeTab === tab ? '#ffffff' : '#64748b',
                   fontSize: 13, fontWeight: 600,
                   cursor: 'pointer', fontFamily: 'system-ui',
-                  textTransform: 'capitalize',
-                  transition: 'all 0.15s',
+                  textTransform: 'capitalize', transition: 'all 0.15s',
                 }}
               >
                 {tab === 'summary' ? 'Summary' : 'Review Questions'}
@@ -410,7 +530,7 @@ function ResultsInner() {
                   {getScoreMessage(data.percentage)}
                 </p>
                 <p style={{ fontSize: 13, color: '#64748b', margin: 0, fontFamily: 'system-ui' }}>
-                  {data.score} out of {data.total} correct
+                  {data.score} of {data.total} correct
                   {data.time_taken_seconds != null && ` · ${formatTime(data.time_taken_seconds)}`}
                 </p>
               </div>
@@ -419,9 +539,9 @@ function ResultsInner() {
             {/* Stats row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
               {[
-                { label: 'Correct',  value: correctCount, color: '#16a34a', bg: '#f0fdf4' },
-                { label: 'Wrong',    value: wrongCount,   color: '#dc2626', bg: '#fef2f2' },
-                { label: 'Skipped', value: skippedCount, color: '#94a3b8', bg: '#f8fafc' },
+                { label: 'Correct',  value: correctCount,  color: '#16a34a', bg: '#f0fdf4' },
+                { label: 'Wrong',    value: wrongCount,    color: '#dc2626', bg: '#fef2f2' },
+                { label: 'Skipped', value: skippedCount,  color: '#94a3b8', bg: '#f8fafc' },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} style={{
                   textAlign: 'center', background: bg,
@@ -433,9 +553,17 @@ function ResultsInner() {
               ))}
             </div>
 
+            {/* AI Review — always shown, skeleton while loading */}
+            <AIReviewCard review={aiReview} loading={aiLoading} />
+            {aiError && !aiLoading && (
+              <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', fontFamily: 'system-ui', margin: '0 0 16px' }}>
+                AI review unavailable
+              </p>
+            )}
+
             {/* Subject breakdown */}
             {data.by_subject.length > 0 && (
-              <div style={{ background: '#ffffff', borderRadius: 16, padding: '16px', border: '1.5px solid #e2e8f0' }}>
+              <div style={{ background: '#ffffff', borderRadius: 16, padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: 16 }}>
                 <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 14px', fontFamily: 'system-ui' }}>
                   BY SUBJECT
                 </h3>
@@ -466,8 +594,8 @@ function ResultsInner() {
               </div>
             )}
 
-            {/* Action buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+            {/* Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button
                 onClick={() => setActiveTab('review')}
                 style={{
@@ -508,8 +636,8 @@ function ResultsInner() {
                   key={key}
                   onClick={() => setFilter(key)}
                   style={{
-                    padding: '6px 14px', borderRadius: 20, border: '1.5px solid',
-             borderColor: filter === key ? '#1d4ed8' : '#e2e8f0',
+                    padding: '6px 14px', borderRadius: 20,
+                    border: `1.5px solid ${filter === key ? '#1d4ed8' : '#e2e8f0'}`,
                     background: filter === key ? '#1d4ed8' : '#ffffff',
                     color: filter === key ? '#ffffff' : '#64748b',
                     fontSize: 12, fontWeight: 600,
@@ -521,14 +649,13 @@ function ResultsInner() {
               ))}
             </div>
 
-            {/* Question cards */}
             {filteredResults.length === 0 ? (
               <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 0', fontFamily: 'system-ui', fontSize: 14 }}>
                 No questions in this category
               </div>
             ) : (
-              filteredResults.map((q, i) => (
-                <QuestionCard key={q.question_id} q={q} index={i} />
+              filteredResults.map(q => (
+                <QuestionCard key={q.question_id} q={q} />
               ))
             )}
           </div>
