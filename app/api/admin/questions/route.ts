@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
     const topic = searchParams.get('topic')?.trim() ?? ''
     const verificationStatus = searchParams.get('verification_status')?.trim() ?? ''
     const search = searchParams.get('search')?.trim() ?? ''
-
+    const mode = searchParams.get('mode')
+    
     const offset = (page - 1) * limit
 
     let query = supabaseAdmin
@@ -86,6 +87,22 @@ export async function GET(req: NextRequest) {
     if (year) query = query.eq('year', parseInt(year, 10))
     if (topic) query = query.eq('topic', topic)
     if (search) query = query.ilike('question_text', `%${search}%`)
+ 
+    // ─── MODE: YEARS DROPDOWN ─────────────────────────
+if (mode === 'years') {
+  const { data, error } = await supabaseAdmin
+    .from('questions')
+    .select('year')
+
+  if (error) throw error
+
+  const years = [...new Set(data.map(q => q.year))]
+    .filter(Boolean)
+    .sort((a, b) => b - a)
+
+  return NextResponse.json({ years })
+}
+    
 
     // Filter by verification_status via answers join
     if (verificationStatus) {
