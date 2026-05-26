@@ -11,19 +11,28 @@ interface Answer {
 
 interface Question {
   id: string
+
   question_text: string
+
   option_1: string
   option_2: string
   option_3: string
   option_4: string
   option_5: string | null
+
   correct_answer_index: number
+
   subject: string
   topic: string
   year: number
   exam_type: string
+
   has_diagram: boolean
+  diagram_image_url?: string | null
+  diagram_description?: string | null
+
   created_at: string
+
   answers: Answer | Answer[] | null
 }
 
