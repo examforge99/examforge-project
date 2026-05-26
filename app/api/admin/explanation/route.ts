@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { callGemini } from "@/lib/ai/gemini";
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
       year,
     } = body;
 
-    // Validate question
+    // ─── VALIDATION ─────────────────────────────────────
     if (!question_text || question_text.trim() === "") {
       return NextResponse.json(
         { error: "question_text is required" },
@@ -26,7 +27,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Build options array
     const optionsList = [
       option_1,
       option_2,
@@ -45,22 +45,19 @@ export async function POST(request: Request) {
     const optionLetters = ["A", "B", "C", "D", "E"];
 
     const optionsFormatted = optionsList
-      .map((opt: string, i: number) => {
-        return `${optionLetters[i]}) ${opt}`;
-      })
+      .map((opt: string, i: number) => `${optionLetters[i]}) ${opt}`)
       .join("\n");
 
-    // Determine if correct answer already exists
+    // ─── CHECK IF ANSWER EXISTS ─────────────────────────
     const hasCorrectAnswer =
       correct_answer_index !== null &&
       correct_answer_index !== undefined &&
       correct_answer_index >= 0 &&
       correct_answer_index < optionsList.length;
 
+    // ─── BUILD PROMPT ───────────────────────────────────
     let prompt = "";
 
-    // MODE 1:
-    // Existing correct answer already available
     if (hasCorrectAnswer) {
       const correctLetter = optionLetters[correct_answer_index];
       const correctText = optionsList[correct_answer_index];
@@ -81,26 +78,25 @@ Subject: ${subject}
 Topic: ${topic}
 Exam: ${exam_type} ${year}
 
-Write a detailed but clear explanation for students.
+Write a clear, student-friendly explanation.
 
-Your explanation must:
-1. Explain why ${correctLetter} is correct
-2. Explain briefly why the other options are wrong
-3. Mention the exact concept tested
-4. End with a memory tip
+Format your response EXACTLY like this:
 
-Tone:
-Educational, simple, coach-like, student friendly.
+Correct Answer: ${correctLetter}
+
+Explanation:
+- Explain why ${correctLetter} is correct
+- Briefly explain why others are wrong
+
+Concept: Mention the exact concept tested
+
+Memory Tip: Give a simple trick to remember it
 `;
-    }
-
-    // MODE 2:
-    // AI must detect correct answer itself
-    else {
+    } else {
       prompt = `
 You are an expert ${subject} tutor for Nigerian exams like JAMB, WAEC, and NECO.
 
-Analyze this multiple-choice question carefully.
+Analyze the question and choose the correct option.
 
 Question:
 ${question_text}
@@ -112,98 +108,43 @@ Subject: ${subject}
 Topic: ${topic}
 Exam: ${exam_type} ${year}
 
-Your tasks:
-1. Identify the correct option
-2. Explain why it is correct
-3. Explain why the other options are incorrect
-4. Mention the exact concept tested
-5. End with a memory tip
-
-IMPORTANT:
-Start your response EXACTLY like this:
+Return your response EXACTLY in this format:
 
 Correct Answer: [LETTER]
 
-Example:
-Correct Answer: C
+Explanation:
+- Explain why the answer is correct
+- Explain why other options are wrong
+
+Concept: What topic is being tested
+
+Memory Tip: Simple way to remember it
 `;
     }
 
-    // Call Anthropic API
-    const response = await fetch(
-      "https://api.anthropic.com/v1/messages",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY || "",
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-3-5-sonnet-latest",
-          max_tokens: 700,
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-        }),
-      }
+    // ─── CALL GEMINI ───────────────────────────────────
+    const explanation = await callGemini(
+      `You are a strict exam tutor. Always follow formatting rules exactly. Be clear, accurate, and educational.`,
+      prompt,
+      0.7,
+      900
     );
 
-    const data = await response.json();
+    // ─── DETECT ANSWER ─────────────────────────────────
+    let detectedAnswer: string | null = null;
 
-    console.log("Anthropic Response:", data);
-
-    // Handle API errors
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          error:
-            data?.error?.message ||
-            "Failed to generate explanation",
-        },
-        { status: response.status }
-      );
-    }
-
-    // Extract explanation safely
-    const explanation = data?.content?.[0]?.text;
-
-    if (!explanation) {
-      return NextResponse.json(
-        { error: "No explanation returned by AI" },
-        { status: 500 }
-      );
-    }
-
-    // Final answer handling
-    let detectedAnswer = null;
-
-    // If answer already existed
     if (hasCorrectAnswer) {
-      detectedAnswer =
-        optionLetters[correct_answer_index];
+      detectedAnswer = optionLetters[correct_answer_index];
+    } else {
+      const match = explanation.match(/Correct Answer:\s*([A-E])/i);
+      detectedAnswer = match ? match[1].toUpperCase() : null;
     }
 
-    // If AI generated answer
-    else {
-      const match = explanation.match(
-        /Correct Answer:\s*([A-E])/i
-      );
-
-      detectedAnswer = match
-        ? match[1].toUpperCase()
-        : null;
-    }
-
-    // Success response
+    // ─── RESPONSE ──────────────────────────────────────
     return NextResponse.json({
       correct_answer: detectedAnswer,
       explanation,
     });
-
   } catch (err: any) {
     console.error("Server Error:", err);
 
@@ -214,4 +155,4 @@ Correct Answer: C
       { status: 500 }
     );
   }
-    }
+}
