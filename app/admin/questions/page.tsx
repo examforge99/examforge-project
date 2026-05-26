@@ -136,8 +136,38 @@ function EditModal({
   })
 
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
+const [saveError, setSaveError] = useState('')
+const [generating, setGenerating] = useState(false)
 
+const handleGenerateExplanation = async () => {
+  setGenerating(true)
+  try {
+    const res = await fetch('/api/admin/explanation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question_text: form.question_text,
+        option_1: form.option_1,
+        option_2: form.option_2,
+        option_3: form.option_3,
+        option_4: form.option_4,
+        option_5: form.option_5 || null,
+        correct_answer_index: form.correct_answer_index,
+        subject: form.subject,
+        topic: form.topic,
+        exam_type: form.exam_type,
+        year: form.year,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error)
+    setForm((f) => ({ ...f, explanation: data.explanation }))
+  } catch (err) {
+    setSaveError(err instanceof Error ? err.message : 'Failed to generate')
+  } finally {
+    setGenerating(false)
+  }
+}
   const handleSave = async () => {
     setSaving(true)
     setSaveError('')
