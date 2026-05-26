@@ -16,30 +16,9 @@ async function verifyAdmin(userId: string): Promise<boolean> {
   return user.role === 'admin'
 }
 
-// ─── MODE: YEARS DROPDOWN (EARLY RETURN) ─────────────────────────
-if (mode === 'years') {
-  const { data, error } = await supabaseAdmin
-    .from('questions')
-    .select('year')
-
-  if (error) throw error
-
-  const years = [...new Set(data.map(q => q.year))]
-    .filter(Boolean)
-    .sort((a, b) => b - a)
-
-  return NextResponse.json({ years })
-}
-// ─── GET /api/admin/questions ─────────────────────────────────────────────────
-// Query params:
-//   page                — default 1
-//   limit               — default 20, max 100
-//   subject             — filter by subject
-//   exam_type           — filter by exam_type
-//   year                — filter by year
-//   topic               — filter by topic
-//   verification_status — filter by verification_status (verified, unverified, flagged)
-//   search              — search in question_text
+// ──────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/questions
+// ──────────────────────────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,16 +33,36 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url)
+
+    const mode = searchParams.get('mode')
+
+    // ─── EARLY RETURN: YEARS MODE ─────────────────────────
+    if (mode === 'years') {
+      const { data, error } = await supabaseAdmin
+        .from('questions')
+        .select('year')
+
+      if (error) throw error
+
+      const years = [...new Set(data.map(q => q.year))]
+        .filter(Boolean)
+        .sort((a, b) => b - a)
+
+      return NextResponse.json({ years })
+    }
+
+    // ─── NORMAL QUESTION MODE ─────────────────────────────
+
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+
     const subject = searchParams.get('subject')?.trim() ?? ''
     const examType = searchParams.get('exam_type')?.trim() ?? ''
     const year = searchParams.get('year')?.trim() ?? ''
     const topic = searchParams.get('topic')?.trim() ?? ''
     const verificationStatus = searchParams.get('verification_status')?.trim() ?? ''
     const search = searchParams.get('search')?.trim() ?? ''
-    const mode = searchParams.get('mode')
-    
+
     const offset = (page - 1) * limit
 
     let query = supabaseAdmin
@@ -96,16 +95,13 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
+    // ─── FILTERS ─────────────────────────────
     if (subject) query = query.eq('subject', subject)
     if (examType) query = query.eq('exam_type', examType)
     if (year) query = query.eq('year', parseInt(year, 10))
     if (topic) query = query.eq('topic', topic)
     if (search) query = query.ilike('question_text', `%${search}%`)
- 
-    // ─── MODE: YEARS DROPDOWN ────────────────────
-    
 
-    // Filter by verification_status via answers join
     if (verificationStatus) {
       query = query.eq('answers.verification_status', verificationStatus)
     }
@@ -144,23 +140,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ─── POST /api/admin/questions ────────────────────────────────────────────────
-// Body:
-//   question_text       — required
-//   option_1            — required
-//   option_2            — required
-//   option_3            — required
-//   option_4            — required
-//   option_5            — optional
-//   correct_answer_index — required (0-based)
-//   subject             — required
-//   topic               — required
-//   year                — required
-//   exam_type           — required
-//   explanation         — required
-//   has_diagram         — optional boolean
-//   diagram_image_url   — optional
-//   diagram_description — optional
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/admin/questions
+// ──────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
@@ -194,14 +176,16 @@ export async function POST(req: NextRequest) {
       diagram_description = null,
     } = body
 
-    // Validate required fields
+    // ─── VALIDATION ─────────────────────────────
     const missingFields: string[] = []
+
     if (!question_text) missingFields.push('question_text')
     if (!option_1) missingFields.push('option_1')
     if (!option_2) missingFields.push('option_2')
     if (!option_3) missingFields.push('option_3')
     if (!option_4) missingFields.push('option_4')
-    if (correct_answer_index === undefined || correct_answer_index === null) missingFields.push('correct_answer_index')
+    if (correct_answer_index === undefined || correct_answer_index === null)
+      missingFields.push('correct_answer_index')
     if (!subject) missingFields.push('subject')
     if (!topic) missingFields.push('topic')
     if (!year) missingFields.push('year')
@@ -215,20 +199,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Validate correct_answer_index range
     const optionCount = option_5 ? 5 : 4
+
     if (
       typeof correct_answer_index !== 'number' ||
       correct_answer_index < 0 ||
       correct_answer_index >= optionCount
     ) {
       return NextResponse.json(
-        { error: `correct_answer_index must be between 0 and ${optionCount - 1}` },
+        {
+          error: `correct_answer_index must be between 0 and ${
+            optionCount - 1
+          }`,
+        },
         { status: 400 }
       )
     }
 
-    // Insert question
+    // ─── INSERT QUESTION ─────────────────────────────
     const { data: newQuestion, error: questionError } = await supabaseAdmin
       .from('questions')
       .insert({
@@ -252,7 +240,7 @@ export async function POST(req: NextRequest) {
 
     if (questionError) throw questionError
 
-    // Insert answer + explanation
+    // ─── INSERT ANSWER ─────────────────────────────
     const { error: answerError } = await supabaseAdmin
       .from('answers')
       .insert({
@@ -286,5 +274,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
-      }
-  
+                             }
