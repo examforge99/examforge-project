@@ -16,6 +16,20 @@ async function verifyAdmin(userId: string): Promise<boolean> {
   return user.role === 'admin'
 }
 
+// ─── MODE: YEARS DROPDOWN (EARLY RETURN) ─────────────────────────
+if (mode === 'years') {
+  const { data, error } = await supabaseAdmin
+    .from('questions')
+    .select('year')
+
+  if (error) throw error
+
+  const years = [...new Set(data.map(q => q.year))]
+    .filter(Boolean)
+    .sort((a, b) => b - a)
+
+  return NextResponse.json({ years })
+}
 // ─── GET /api/admin/questions ─────────────────────────────────────────────────
 // Query params:
 //   page                — default 1
@@ -88,20 +102,7 @@ export async function GET(req: NextRequest) {
     if (topic) query = query.eq('topic', topic)
     if (search) query = query.ilike('question_text', `%${search}%`)
  
-    // ─── MODE: YEARS DROPDOWN ─────────────────────────
-if (mode === 'years') {
-  const { data, error } = await supabaseAdmin
-    .from('questions')
-    .select('year')
-
-  if (error) throw error
-
-  const years = [...new Set(data.map(q => q.year))]
-    .filter(Boolean)
-    .sort((a, b) => b - a)
-
-  return NextResponse.json({ years })
-}
+    // ─── MODE: YEARS DROPDOWN ────────────────────
     
 
     // Filter by verification_status via answers join
