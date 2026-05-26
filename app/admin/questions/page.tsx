@@ -120,21 +120,29 @@ function EditModal({
   const answer = Array.isArray(question.answers) ? question.answers[0] : question.answers
 
   const [form, setForm] = useState({
-    question_text: question.question_text,
-    option_1: question.option_1,
-    option_2: question.option_2,
-    option_3: question.option_3,
-    option_4: question.option_4,
-    option_5: question.option_5 ?? '',
-    correct_answer_index: question.correct_answer_index,
-    subject: question.subject,
-    topic: question.topic,
-    year: question.year,
-    exam_type: question.exam_type,
-    explanation: answer?.explanation ?? '',
-    verification_status: answer?.verification_status ?? 'unverified',
-  })
+  question_text: question.question_text,
 
+  option_1: question.option_1,
+  option_2: question.option_2,
+  option_3: question.option_3,
+  option_4: question.option_4,
+  option_5: question.option_5 ?? '',
+
+  correct_answer_index: question.correct_answer_index,
+
+  subject: question.subject,
+  topic: question.topic,
+  year: question.year,
+  exam_type: question.exam_type,
+
+  has_diagram: question.has_diagram ?? false,
+  diagram_image_url: question.diagram_image_url ?? '',
+  diagram_description: question.diagram_description ?? '',
+
+  explanation: answer?.explanation ?? '',
+  verification_status: answer?.verification_status ?? 'unverified',
+})
+  
   const [saving, setSaving] = useState(false)
 const [saveError, setSaveError] = useState('')
 const [generating, setGenerating] = useState(false)
