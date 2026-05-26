@@ -11,9 +11,9 @@ export async function POST(request: Request) {
       year,
     } = body;
 
-    if (!question_text || correct_answer_index == null) {
+    if (!question_text == null) {
       return Response.json(
-        { error: "question_text and correct_answer_index are required" },
+        { error: "question_text is required" },
         { status: 400 }
       );
     }
