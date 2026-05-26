@@ -355,12 +355,30 @@ const handleGenerateExplanation = async () => {
               ))}
             </div>
           </div>
-
-          {/* Explanation */}
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'system-ui, sans-serif', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
-              Explanation
-            </label>
+{/* Explanation */}
+<div>
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+    <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'system-ui, sans-serif', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      Explanation
+    </label>
+    <button
+      onClick={handleGenerateExplanation}
+      disabled={generating}
+      style={{
+        padding: '4px 12px',
+        borderRadius: 6,
+        border: 'none',
+        background: generating ? '#94a3b8' : '#7c3aed',
+        color: '#ffffff',
+        fontSize: 12,
+        fontFamily: 'system-ui, sans-serif',
+        fontWeight: 600,
+        cursor: generating ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {generating ? 'Generating...' : '✨ Generate AI'}
+    </button>
+  </div>
             <textarea
               value={form.explanation}
               onChange={(e) => setForm((f) => ({ ...f, explanation: e.target.value }))}
