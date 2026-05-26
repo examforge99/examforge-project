@@ -4,7 +4,6 @@ export async function POST(request: Request) {
     const {
       question_text,
       option_1, option_2, option_3, option_4, option_5,
-      correct_answer_index,
       subject,
       topic,
       exam_type,
