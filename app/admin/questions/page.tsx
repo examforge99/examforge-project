@@ -358,6 +358,103 @@ const handleGenerateExplanation = async () => {
   </label>
 </div>
 
+          {form.has_diagram && (
+  <div
+    style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      padding: 12,
+      border: '1px solid rgba(15,23,42,0.08)',
+      borderRadius: 10,
+      background: '#faf9f7',
+    }}
+  >
+    <div>
+      <label
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#64748b',
+          fontFamily: 'system-ui, sans-serif',
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          display: 'block',
+          marginBottom: 4,
+        }}
+      >
+        Diagram Image URL
+      </label>
+
+      <input
+        type="text"
+        value={form.diagram_image_url}
+        onChange={(e) =>
+          setForm((f) => ({
+            ...f,
+            diagram_image_url: e.target.value,
+          }))
+        }
+        placeholder="https://..."
+        style={{
+          width: '100%',
+          padding: '8px 10px',
+          border: '1px solid rgba(15,23,42,0.12)',
+          borderRadius: 8,
+          fontSize: 13,
+          fontFamily: 'system-ui, sans-serif',
+          color: '#0f172a',
+          background: '#ffffff',
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+    </div>
+
+    <div>
+      <label
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#64748b',
+          fontFamily: 'system-ui, sans-serif',
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          display: 'block',
+          marginBottom: 4,
+        }}
+      >
+        Diagram Description
+      </label>
+
+      <textarea
+        rows={3}
+        value={form.diagram_description}
+        onChange={(e) =>
+          setForm((f) => ({
+            ...f,
+            diagram_description: e.target.value,
+          }))
+        }
+        placeholder="Describe the diagram..."
+        style={{
+          width: '100%',
+          padding: '8px 10px',
+          border: '1px solid rgba(15,23,42,0.12)',
+          borderRadius: 8,
+          fontSize: 13,
+          fontFamily: 'system-ui, sans-serif',
+          color: '#0f172a',
+          background: '#ffffff',
+          outline: 'none',
+          resize: 'vertical',
+          boxSizing: 'border-box',
+        }}
+      />
+    </div>
+  </div>
+)}
+          
           {/* Options */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'system-ui, sans-serif', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
