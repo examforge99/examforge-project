@@ -7,7 +7,7 @@
 
 export const PRICING = {
   // Master switch — set to false to disable all payments globally
-  payments_enabled: false,
+  payments_enabled: true,
 
   // Coupon codes — set to true when you have active coupon campaigns
   coupons_enabled: false,
@@ -42,7 +42,7 @@ export const PRICING = {
       duration:    '365 days access',
       price_naira: 11999,
       price_kobo:  1199900,
-      enabled:     true,
+      enabled:     false,
       popular:     false,
     },
   },
