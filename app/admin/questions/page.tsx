@@ -332,6 +332,32 @@ const handleGenerateExplanation = async () => {
             />
           </div>
 
+          <div>
+  <label
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      fontSize: 13,
+      fontFamily: 'system-ui, sans-serif',
+      color: '#0f172a',
+      cursor: 'pointer',
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={form.has_diagram}
+      onChange={(e) =>
+        setForm((f) => ({
+          ...f,
+          has_diagram: e.target.checked,
+        }))
+      }
+    />
+    This question has a diagram
+  </label>
+</div>
+
           {/* Options */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'system-ui, sans-serif', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>
