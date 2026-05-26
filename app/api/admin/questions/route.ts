@@ -44,10 +44,12 @@ export async function GET(req: NextRequest) {
 
       if (error) throw error
 
-      const years = [...new Set(data.map(q => q.year))]
-        .filter(Boolean)
-        .sort((a, b) => b - a)
-
+  
+      const years = Array.from(
+  new Set((data ?? []).map((q) => q.year))
+)
+  .filter((y): y is number => typeof y === 'number')
+  .sort((a, b) => b - a)
       return NextResponse.json({ years })
     }
 
