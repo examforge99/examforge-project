@@ -1,4 +1,4 @@
- 'use client'
+'use client'
 
 import React, { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useAuth } from '@clerk/nextjs'
@@ -870,4 +870,4 @@ export default function CBTPracticePage() {
       <CBTPracticeInner />
     </Suspense>
   )
-                   }
+     }
