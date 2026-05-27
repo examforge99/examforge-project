@@ -179,7 +179,7 @@ Rules:
 - If there is a recommended focus, weave it naturally into the message (don't list it robotically)
 - English only`
 
-    const message = await callGemini(systemPrompt, userPrompt, 0.7, 150)
+    const message = await callGemini(systemPrompt, userPrompt, 0.7, 250)
 
     // ── Update last_welcome_sent_at ───────────────────────────────────────────
 
@@ -204,5 +204,4 @@ Rules:
     await logError('AI_WELCOME_FAILED', err.message, null, { stack: err.stack ?? null })
     return Response.json({ error: err.message }, { status: 500 })
   }
-      }
-    
+}
