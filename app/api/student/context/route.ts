@@ -93,7 +93,7 @@ export async function GET(request: Request) {
       supabaseAdmin
         .from('ai_student_summary')
         .select('summary_text')
-        .eq('user_id', user_id)
+        .eq('clerk_user_id', user_id)
         .maybeSingle(),
 
       supabaseAdmin
