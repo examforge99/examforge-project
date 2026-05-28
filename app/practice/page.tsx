@@ -870,4 +870,4 @@ export default function CBTPracticePage() {
       <CBTPracticeInner />
     </Suspense>
   )
-     }
+          }
