@@ -239,4 +239,38 @@ if (Object.keys(answerUpdate).length > 0) {
     )
   }
       }
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { userId } = await auth()
+    if (!userId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+
+    const isAdmin = await verifyAdmin(userId)
+    if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+    const questionId = params.id
+
+    // Delete answer first (foreign key)
+    await supabaseAdmin
+      .from('answers')
+      .delete()
+      .eq('question_id', questionId)
+
+    // Then delete question
+    const { error } = await supabaseAdmin
+      .from('questions')
+      .delete()
+      .eq('id', questionId)
+
+    if (error) throw error
+
+    return NextResponse.json({ message: 'Question deleted successfully' })
+
+  } catch (err) {
+    console.error('[admin/questions/[id]] DELETE Error:', err)
+    return NextResponse.json({ error: 'Failed to delete question' }, { status: 500 })
+  }
+}
       
