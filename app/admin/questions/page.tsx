@@ -601,6 +601,8 @@ export default function QuestionsPage() {
   const [verificationFilter, setVerificationFilter] = useState('')
   const [page, setPage] = useState(1)
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
+  const [yearFilter, setYearFilter] = useState('')
+  const [availableYears, setAvailableYears] = useState<number[]>([])
 
   const fetchQuestions = useCallback(async () => {
     setLoading(true)
@@ -626,15 +628,15 @@ export default function QuestionsPage() {
 }, [page, search, subjectFilter, examTypeFilter, verificationFilter, yearFilter])
 
   useEffect(() => {
+    fetchQuestions()
+  }, [fetchQuestions])
+
+  useEffect(() => {
   fetch('/api/admin/questions?mode=years')
     .then((r) => r.json())
     .then((d) => setAvailableYears(d.years ?? []))
 }, [])
-
-  useEffect(() => {
-    fetchQuestions()
-  }, [fetchQuestions])
-
+  
   const getAnswer = (q: Question): Answer | null => {
     if (!q.answers) return null
     if (Array.isArray(q.answers)) return q.answers[0] ?? null
@@ -731,15 +733,25 @@ export default function QuestionsPage() {
           </select>
         ))}
 
-        <input
+<input
           type="text"
           placeholder="Filter by subject..."
           value={subjectFilter}
           onChange={(e) => { setSubjectFilter(e.target.value); setPage(1) }}
           style={{ padding: '8px 12px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'system-ui, sans-serif', color: '#0f172a', background: '#faf9f7', outline: 'none', width: 160 }}
         />
-      </div>
 
+        <select
+          value={yearFilter}
+          onChange={(e) => { setYearFilter(e.target.value); setPage(1) }}
+          style={{ padding: '8px 12px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'system-ui, sans-serif', color: '#0f172a', background: '#faf9f7', cursor: 'pointer', outline: 'none' }}
+        >
+          <option value="">All Years</option>
+          {availableYears.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+      </div>
       
 
       {/* Questions list */}
