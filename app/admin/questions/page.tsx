@@ -611,6 +611,7 @@ export default function QuestionsPage() {
       if (subjectFilter) params.set('subject', subjectFilter)
       if (examTypeFilter) params.set('exam_type', examTypeFilter)
       if (verificationFilter) params.set('verification_status', verificationFilter)
+      if (yearFilter) params.set('year', yearFilter)
 
       const res = await fetch(`/api/admin/questions?${params}`)
       if (!res.ok) throw new Error('Failed to fetch questions')
@@ -622,7 +623,13 @@ export default function QuestionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, search, subjectFilter, examTypeFilter, verificationFilter])
+}, [page, search, subjectFilter, examTypeFilter, verificationFilter, yearFilter])
+
+  useEffect(() => {
+  fetch('/api/admin/questions?mode=years')
+    .then((r) => r.json())
+    .then((d) => setAvailableYears(d.years ?? []))
+}, [])
 
   useEffect(() => {
     fetchQuestions()
@@ -732,6 +739,8 @@ export default function QuestionsPage() {
           style={{ padding: '8px 12px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'system-ui, sans-serif', color: '#0f172a', background: '#faf9f7', outline: 'none', width: 160 }}
         />
       </div>
+
+      
 
       {/* Questions list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
