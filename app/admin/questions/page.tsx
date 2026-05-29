@@ -371,44 +371,27 @@ const handleGenerateExplanation = async () => {
     }}
   >
     <div>
-      <label
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: '#64748b',
-          fontFamily: 'system-ui, sans-serif',
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          display: 'block',
-          marginBottom: 4,
-        }}
-      >
-        Diagram Image URL
-      </label>
-
-      <input
-        type="text"
-        value={form.diagram_image_url}
-        onChange={(e) =>
-          setForm((f) => ({
-            ...f,
-            diagram_image_url: e.target.value,
-          }))
-        }
-        placeholder="https://..."
-        style={{
-          width: '100%',
-          padding: '8px 10px',
-          border: '1px solid rgba(15,23,42,0.12)',
-          borderRadius: 8,
-          fontSize: 13,
-          fontFamily: 'system-ui, sans-serif',
-          color: '#0f172a',
-          background: '#ffffff',
-          outline: 'none',
-          boxSizing: 'border-box',
-        }}
-      />
+      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', fontFamily: 'system-ui, sans-serif', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
+  Diagram Image URL
+</label>
+<input
+  type="text"
+  value={form.diagram_image_url}
+  onChange={(e) => setForm((f) => ({ ...f, diagram_image_url: e.target.value }))}
+  style={{ width: '100%', padding: '8px 10px', border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'system-ui, sans-serif', color: '#0f172a', background: '#faf9f7', outline: 'none', boxSizing: 'border-box' }}
+/>
+{form.diagram_image_url && (
+  <div style={{ marginTop: 8, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(15,23,42,0.12)' }}>
+    <img
+      src={form.diagram_image_url}
+      alt="Diagram preview"
+      style={{ width: '100%', maxHeight: 300, objectFit: 'contain', background: '#f8fafc', display: 'block' }}
+      onError={(e) => {
+        (e.target as HTMLImageElement).style.display = 'none'
+      }}
+    />
+  </div>
+)}
     </div>
 
     <div>
