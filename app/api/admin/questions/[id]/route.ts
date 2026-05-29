@@ -175,16 +175,17 @@ export async function PATCH(
 
       if (questionUpdateError) throw questionUpdateError
     }
+// 11. Upsert answers table if needed
+if (Object.keys(answerUpdate).length > 0) {
+  const { error: answerUpdateError } = await supabaseAdmin
+    .from('answers')
+    .upsert(
+      { ...answerUpdate, question_id: questionId },
+      { onConflict: 'question_id' }
+    )
 
-    // 11. Update answers table if needed
-    if (Object.keys(answerUpdate).length > 0) {
-      const { error: answerUpdateError } = await supabaseAdmin
-        .from('answers')
-        .update(answerUpdate)
-        .eq('question_id', questionId)
-
-      if (answerUpdateError) throw answerUpdateError
-    }
+  if (answerUpdateError) throw answerUpdateError
+}
 
     // 12. Return updated question with answer
     const { data: updatedQuestion, error: refetchError } = await supabaseAdmin
