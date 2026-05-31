@@ -1,4 +1,4 @@
-const CACHE_NAME = 'examforge'
+const CACHE_NAME = 'examforge-v1'
 const STATIC_ASSETS = ['/', '/dashboard', '/manifest.json']
 
 self.addEventListener('install', (event) => {
