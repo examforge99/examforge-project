@@ -3,6 +3,7 @@
   "short_name": "ExamForge",
   "description": "Ace JAMB, WAEC & NECO with AI",
   "start_url": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1d4ed8",
