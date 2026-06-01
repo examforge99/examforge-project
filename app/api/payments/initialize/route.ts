@@ -77,6 +77,49 @@ export async function POST(request: Request) {
       )
     }
 
+    // ── Guard: prevent double subscription ────────────────────────────────────
+    // Check if user already has an active subscription that hasn't expired
+
+    const { data: existingSub } = await supabaseAdmin
+      .from('subscriptions')
+      .select('status, expiry_date, grace_period_end, plan_name')
+      .eq('clerk_user_id', user_id)
+      .order('start_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingSub) {
+      const now = new Date()
+      const expiry   = existingSub.expiry_date    ? new Date(existingSub.expiry_date)    : null
+      const graceEnd = existingSub.grace_period_end ? new Date(existingSub.grace_period_end) : null
+
+      const isActive =
+        (existingSub.status === 'active' && expiry && expiry > now) ||
+        (existingSub.status === 'grace_period' && graceEnd && graceEnd > now)
+
+      if (isActive) {
+        const expiryStr = expiry
+          ? expiry.toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })
+          : 'unknown'
+
+        await logError(
+          'PAYMENTS_ALREADY_SUBSCRIBED',
+          'User attempted to subscribe while already active',
+          user_id,
+          { existing_plan: existingSub.plan_name, expiry: existingSub.expiry_date }
+        )
+
+        return Response.json(
+          {
+            error: `You already have an active ${existingSub.plan_name?.replace('_', ' ')} subscription valid until ${expiryStr}. You cannot subscribe again until it expires.`,
+            already_subscribed: true,
+            expiry_date: existingSub.expiry_date,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // ── Fetch user email from DB ──────────────────────────────────────────────
 
     const { data: userData, error: userError } = await supabaseAdmin
@@ -194,5 +237,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
-
+      }
