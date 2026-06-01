@@ -1,4 +1,4 @@
-const CACHE_NAME = 'examforge-v1'
+const CACHE_NAME = 'examforge-v2'
 const STATIC_ASSETS = ['/', '/dashboard', '/manifest.json']
 
 self.addEventListener('install', (event) => {
@@ -13,9 +13,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) =>
-        Promise.all(
-          keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
-        )
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
   )
@@ -23,12 +21,11 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
+  if (!event.request.url.startsWith(self.location.origin)) return
 
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        if (!res || res.status !== 200 || res.type === 'opaque') return res
-
         const clone = res.clone()
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
         return res
