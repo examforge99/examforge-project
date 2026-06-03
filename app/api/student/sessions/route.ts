@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
     const { data: attempts, error } = await supabaseAdmin
       .from('attempts')
-      .select('session_id, is_correct, subject, attempt_timestamp, time_spent_seconds')
+      .select('session_id, is_correct, attempt_timestamp, time_spent_seconds, questions(subject)')
       .eq('clerk_user_id', userId)
       .not('session_id', 'is', null)
       .order('attempt_timestamp', { ascending: false })
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
       // Per-subject breakdown
       const subjectMap = new Map<string, { correct: number; total: number }>()
       for (const a of s.attempts) {
-        const subj = a.subject ?? 'Unknown'
+        const subj = (a.questions as any)?.subject ?? 'Unknown'
         if (!subjectMap.has(subj)) subjectMap.set(subj, { correct: 0, total: 0 })
         const sub = subjectMap.get(subj)!
         sub.total++
@@ -121,5 +121,4 @@ export async function GET(request: Request) {
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 })
   }
-                                        }
-                         
+}
