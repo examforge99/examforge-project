@@ -145,8 +145,8 @@ async function fetchQuestion(
     }
 
     const { data } = await query
-
-    const results = (data || []) as QuestionRow[]
+    
+    const results = (data ?? []) as unknown as QuestionRow[]
     if (results.length === 0) return null
 
     // Pick random from results
