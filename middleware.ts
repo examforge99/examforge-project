@@ -19,7 +19,9 @@ const isPublicRoute = createRouteMatcher([
   '/manifest.json',      // ← PWA manifest must be public
   '/sw.js',              // ← Service worker must be public
   '/icon-192.png',       // ← PWA icons must be public
-  '/icon-512.png',       // ← PWA icons must be public
+  '/icon-512.png',   
+  '/.well-known/assetlinks.json',
+  '/.well-known/(.*)',
 ])
 
 const isAdminRoute = createRouteMatcher([
@@ -185,6 +187,6 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|icon-.*\\.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+'/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|icon-.*\\.png|\\.well-known.*|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'
   ],
                                            }
