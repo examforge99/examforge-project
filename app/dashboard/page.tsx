@@ -544,7 +544,7 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => { await signOut(); router.push('/login') }
   const handlePracticeSelect = (mode: string) => { setSheet('none'); setTimeout(() => router.push(`/practice?mode=${mode}`), 300) }
-  const handleAICoach = () => { setSheet('none'); setTimeout(() => router.push('/ai'), 300) }
+  const handleAICoach = () => { setSheet('none'); setTimeout(() => router.push('/dashboard/ai-coach'), 300) }
 
   const firstName  = data?.user?.full_name?.split(' ')[0] ?? 'Student'
   const questions  = data?.milestones?.total_questions_answered ?? 0
