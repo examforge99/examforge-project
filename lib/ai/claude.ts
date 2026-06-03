@@ -98,5 +98,4 @@ export async function callClaude(
   console.error('[claude] All attempts failed')
   if (graceful) return FALLBACK_MESSAGE
   throw new Error('Claude API unavailable')
-      }
-
+}
