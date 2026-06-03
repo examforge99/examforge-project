@@ -1,5 +1,13 @@
 import { ClerkProvider } from '@clerk/nextjs'
 import './globals.css'
+import PWAInstallBanner from '@/component/PWAInstallBanner'
+
+// inside <body>:
+<body>
+  {children}
+  <PWAInstallBanner />
+  ...
+</body>
 
 export const metadata = {
   title: 'ExamForge',
