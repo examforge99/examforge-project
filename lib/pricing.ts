@@ -18,8 +18,8 @@ export const PRICING = {
       duration:    '30 days access',
       price_naira: 1499,
       price_kobo:  149900,
-      enabled:     false,
-      popular:     true,
+      enabled:     true,
+      popular:     false,
     },
     '3_months': {
       label:       '3 Months',
