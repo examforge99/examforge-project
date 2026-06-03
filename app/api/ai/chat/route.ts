@@ -105,7 +105,7 @@ async function fetchQuestion(
   const midWrongIds: string[]      = []  // 7–30 days, wrong
   const midCorrectIds: string[]    = []  // 7–30 days, correct
 
-  for (const [qId, data] of attemptMap.entries()) {
+  Array.from(attemptMap.entries()).forEach(([qId, data]) => {
     if (data.last_attempted > skipCutoff) {
       recentIds.push(qId)
     } else if (data.last_attempted <= refreshCutoff) {
@@ -113,9 +113,9 @@ async function fetchQuestion(
     } else {
       data.is_correct ? midCorrectIds.push(qId) : midWrongIds.push(qId)
     }
-  }
+  })
 
-  const allAttemptedIds = [...attemptMap.keys()]
+  const allAttemptedIds = Array.from(attemptMap.keys())
 
   // ── Helper: pick one random question from a filtered set ─────────────────
   const pickOne = async (
@@ -382,5 +382,5 @@ GENERAL RULES:
     console.error('[ai/chat] Error:', err.message)
     return Response.json({ error: err.message }, { status: 500 })
   }
-  }
-        
+      }
+    
