@@ -1,13 +1,12 @@
 // app/api/ai/explanation/route.ts
-// UPDATED — AI knows what the student answered and responds accordingly
-// Uses callGemini from lib/ai/gemini which has multi-model fallback built in
+// Migrated from Gemini → Claude
 // POST /api/ai/explanation
 // Body: { question_id, user_id, subject, topic, selected_answer_index, is_correct }
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { buildSystemPrompt, StudentContext } from '@/lib/ai/buildSystemPrompt'
 import { saveInteraction } from '@/lib/ai/saveInteraction'
-import { callGemini } from '@/lib/ai/gemini'
+import { callClaude } from '@/lib/ai/claude'
 
 export async function POST(request: Request) {
   try {
@@ -19,7 +18,6 @@ export async function POST(request: Request) {
     }
 
     // Step 1: Check cache — only for correct answers
-    // Wrong answer explanations are always personalized — never cached
     const { data: answerData } = await supabaseAdmin
       .from('answers')
       .select('explanation, verification_status')
@@ -61,14 +59,13 @@ export async function POST(request: Request) {
     const contextData = await contextRes.json()
     const context: StudentContext = contextData as StudentContext
 
-    // Step 4: Build system prompt with subject tone
+    // Step 4: Build system prompt
     const systemPrompt = buildSystemPrompt(
       context,
       subject || (question as any).subject,
       'explanation'
     )
 
-    // Build options list
     const optionsList = [
       (question as any).option_1,
       (question as any).option_2,
@@ -86,7 +83,6 @@ export async function POST(request: Request) {
     const diagramContext = (question as any).has_diagram && (question as any).diagram_description
       ? `\nDiagram context: ${(question as any).diagram_description}` : ''
 
-    // Step 5: Build personalized prompt — different for correct vs wrong
     let userPrompt: string
 
     if (is_correct) {
@@ -106,13 +102,12 @@ Your response must:
 2. Explain clearly WHY ${correctLetter} is correct — reinforce the reasoning so it sticks
 3. Name the exact syllabus concept or topic this question tests
 4. Briefly explain why the other options are wrong — one line each
-5. End with one related concept they should also master to deepen their knowledge
+5. End with one related concept they should also master
 ${(question as any).has_diagram ? '6. Reference what the diagram shows and how it supports the correct answer' : ''}
 
 Tone: encouraging, coach-like, Nigerian-aware. Flowing sentences, no bullet points. English only.`
-
     } else {
-      userPrompt = `The student just answered this question INCORRECTLY. Help them understand their mistake and guide them.
+      userPrompt = `The student just answered this question INCORRECTLY. Help them understand their mistake.
 ${(question as any).has_diagram ? '(This question has a diagram. Reference it in your explanation.)' : ''}${diagramContext}
 
 Question: ${(question as any).question_text}
@@ -124,21 +119,21 @@ Correct answer: ${correctLetter}) ${correctOptionText}
 Result: WRONG ✗
 
 Your response must:
-1. Acknowledge what they chose without being harsh — be empathetic, this is a common mistake
-2. Explain specifically WHY option ${selectedLetter} is wrong — don't be vague
+1. Acknowledge what they chose without being harsh
+2. Explain specifically WHY option ${selectedLetter} is wrong
 3. Explain clearly WHY option ${correctLetter} is the correct answer
-4. Identify the exact concept or topic they are missing that caused this mistake
-5. Tell them specifically what to go and revise — be precise
-6. Give one practical tip or memory trick to help them remember this next time
-${(question as any).has_diagram ? '7. Explain what the diagram shows and how understanding it would have helped' : ''}
+4. Identify the exact concept they are missing
+5. Tell them specifically what to revise
+6. Give one practical memory trick
+${(question as any).has_diagram ? '7. Explain what the diagram shows and how it would have helped' : ''}
 
-Tone: honest but kind, like a coach who has seen this mistake before. Nigerian-aware. Flowing sentences, no bullet points. English only.`
+Tone: honest but kind. Nigerian-aware. Flowing sentences, no bullet points. English only.`
     }
 
-    // Step 6: Call Gemini via lib — automatically uses fallback models if needed
-    const explanation = await callGemini(systemPrompt, userPrompt, 0.4, 1200)
+    // Step 5: Call Claude — use Haiku for explanations (cost efficient)
+    const explanation = await callClaude(systemPrompt, userPrompt, 0.4, 1200)
 
-    // Step 7: Cache correct answer explanations only
+    // Step 6: Cache correct answer explanations only
     if (is_correct) {
       if (answerData) {
         await supabaseAdmin
@@ -155,7 +150,7 @@ Tone: honest but kind, like a coach who has seen this mistake before. Nigerian-a
       }
     }
 
-    // Step 8: Save interaction
+    // Step 7: Save interaction
     await saveInteraction(user_id, 'explanation', explanation, {
       subject: subject || (question as any).subject,
       topic: topic || (question as any).topic,
