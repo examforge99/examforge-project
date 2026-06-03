@@ -456,9 +456,7 @@ function AccountSheet({ data, onSignOut, onSubscribe, onAICoach }: {
           fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
         }}>{initials}</div>
         <div>
-          <div style={{ fontFamily: "'Bebas Neue', Georgius: '50%', background: '#0f172a',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
+          <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
         }}>{initials}</div>
         <div>
           <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 20, color: '#0f172a', letterSpacing: '0.03em' }}>{fullName}</div>
@@ -709,7 +707,7 @@ export default function DashboardPage() {
           </div>
         </button>
 
-        {/* AI Coach card */}
+            {/* AI Coach card */}
         <button className="practice-btn" onClick={handleAICoach} style={{
           width: '100%', textAlign: 'left',
           background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
@@ -753,7 +751,7 @@ export default function DashboardPage() {
               </div>
             </div>
             {aiLoading
-              ? <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>{[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1', animation:  `pulse 1.2s ease ${i * 0.2}s infinite` }} />)}</div>
+              ? <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>{[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1', animation: `pulse 1.2s ease ${i * 0.2}s infinite` }} />)}</div>
               : <p style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.75, margin: 0, fontFamily: 'Georgia, serif' }}>{aiMessage}</p>
             }
           </div>
@@ -913,4 +911,4 @@ export default function DashboardPage() {
       </BottomSheet>
     </div>
   )
-        }
+            }
