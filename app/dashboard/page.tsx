@@ -456,9 +456,6 @@ function AccountSheet({ data, onSignOut, onSubscribe, onAICoach }: {
           fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
         }}>{initials}</div>
         <div>
-          <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
-        }}>{initials}</div>
-        <div>
           <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 20, color: '#0f172a', letterSpacing: '0.03em' }}>{fullName}</div>
           <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'system-ui' }}>
             {data?.user?.exam_type ?? 'JAMB'} · {isSubbed ? data?.subscription?.plan_name ?? 'Pro' : 'Free Plan'}
@@ -707,7 +704,7 @@ export default function DashboardPage() {
           </div>
         </button>
 
-            {/* AI Coach card */}
+        {/* AI Coach card */}
         <button className="practice-btn" onClick={handleAICoach} style={{
           width: '100%', textAlign: 'left',
           background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
@@ -911,4 +908,4 @@ export default function DashboardPage() {
       </BottomSheet>
     </div>
   )
-            }
+          }
