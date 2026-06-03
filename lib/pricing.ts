@@ -7,10 +7,10 @@
 
 export const PRICING = {
   // Master switch — set to false to disable all payments globally
-  payments_enabled: true,
+  payments_enabled: false,
 
   // Coupon codes — set to true when you have active coupon campaigns
-  coupons_enabled: false,
+  coupons_enabled: true,
 
   plans: {
     '1_month': {
