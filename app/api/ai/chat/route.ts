@@ -258,11 +258,64 @@ export async function POST(request: Request) {
     }
 
     // ── Step 2: Fetch student context ─────────────────────────────────────────
-    const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
-    const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
-    const contextData = await contextRes.json()
-    const context: StudentContext = contextData as StudentContext
+    // ── Step 2: Fetch student context (direct DB — no HTTP self-call) ─────────
+const [
+  { data: userData },
+  { data: metricsData },
+  { data: weakTopicsData },
+  { data: recentSessionsData },
+] = await Promise.all([
+  supabaseAdmin
+    .from('users')
+    .select('full_name, exam_type, target_score, subscription_status, subjects, created_at')
+    .eq('clerk_user_id', user_id)
+    .single(),
+  supabaseAdmin
+    .from('user_metrics')
+    .select('total_questions_answered, overall_accuracy, accuracy_by_subject, current_streak_days, longest_streak, first_70_percent_achieved')
+    .eq('clerk_user_id', user_id)
+    .single(),
+  supabaseAdmin
+    .from('weak_topics')
+    .select('subject, topic, accuracy, attempts_count')
+    .eq('clerk_user_id', user_id)
+    .order('accuracy', { ascending: true })
+    .limit(10),
+  supabaseAdmin
+    .from('practice_sessions')
+    .select('session_id, score, total_questions, percentage, created_at')
+    .eq('clerk_user_id', user_id)
+    .order('created_at', { ascending: false })
+    .limit(5),
+])
 
+const context: StudentContext = {
+  user: {
+    full_name: userData?.full_name ?? 'Student',
+    exam_type: userData?.exam_type ?? 'JAMB',
+    target_score: userData?.target_score ?? null,
+    subscription_status: userData?.subscription_status ?? 'free',
+    days_on_platform: userData?.created_at
+      ? Math.floor((Date.now() - new Date(userData.created_at).getTime()) / 86400000)
+      : 0,
+  },
+  metrics: {
+    total_questions_answered: metricsData?.total_questions_answered ?? 0,
+    overall_accuracy: metricsData?.overall_accuracy ?? 0,
+    accuracy_by_subject: metricsData?.accuracy_by_subject ?? {},
+    current_streak_days: metricsData?.current_streak_days ?? 0,
+    longest_streak: metricsData?.longest_streak ?? 0,
+    first_70_percent_achieved: metricsData?.first_70_percent_achieved ?? false,
+  },
+  weak_topics: weakTopicsData ?? [],
+  recent_sessions: (recentSessionsData ?? []).map(s => ({
+    session_id: s.session_id,
+    score: s.score,
+    total_questions: s.total_questions,
+    percentage: s.percentage,
+    date: s.created_at,
+  })),
+}
     // ── Step 3: Detect if student wants a question ────────────────────────────
     const lastUserMessage = [...messages]
       .reverse()
