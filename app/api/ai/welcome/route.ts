@@ -179,7 +179,7 @@ Rules:
 - If there is a recommended focus, weave it naturally into the message (don't list it robotically)
 - English only`
 
-    const message = await callGemini(systemPrompt, userPrompt, 0.7, 250)
+    const message = await callGemini(systemPrompt, userPrompt, 0.7, 500)
 
     // ── Update last_welcome_sent_at ───────────────────────────────────────────
 
