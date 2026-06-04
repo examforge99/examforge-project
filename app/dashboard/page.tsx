@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@clerk/nextjs'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { PRICING, PLAN_KEYS, type PlanKey } from '@/lib/pricing'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -497,6 +497,9 @@ export default function DashboardPage() {
   const [loading, setLoading]     = useState(true)
   const [aiLoading, setAiLoading] = useState(false)
   const [sheet, setSheet]         = useState<Sheet>('none')
+  const { userId, signOut } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()  // ← add this
   const [activeTab, setActiveTab] = useState('home')
   const [visible, setVisible]     = useState(false)
 
@@ -902,3 +905,12 @@ export default function DashboardPage() {
     </div>
   )
           }
+
+function DashboardContent() {
+  // everything inside stays the same
+
+// Then at the very bottom add:
+import { Suspense } from 'react'
+export default function DashboardPage() {
+  return <Suspense fallback={null}><DashboardContent /></Suspense>
+}
