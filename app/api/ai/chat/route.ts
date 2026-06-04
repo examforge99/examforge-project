@@ -289,7 +289,7 @@ const [
     .limit(5),
 ])
 
-const context: StudentContext = contextDat
+const context: StudentContext = contextData
     // ── Step 3: Detect if student wants a question ────────────────────────────
     const lastUserMessage = [...messages]
       .reverse()
