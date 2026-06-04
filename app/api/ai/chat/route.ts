@@ -1,15 +1,10 @@
 // app/api/ai/chat/route.ts
-// Dedicated conversational AI coach endpoint
-// Fetches real questions from the questions table — never generates them
-// Spaced repetition logic: prioritises unseen → old wrong → old correct → recent wrong → recent correct
-// POST /api/ai/chat
-// Body: { user_id, messages, subject?, topic?, exam_type? }
-
 import { supabaseAdmin } from '@/lib/supabase'
 import { buildSystemPrompt, StudentContext } from '@/lib/ai/buildSystemPrompt'
-import { saveInteraction } from '@/lib/ai/saveInteraction'
 import { callClaude } from '@/lib/ai/claude'
 import { checkAndIncrementUsage, logChatInteraction } from '@/lib/ai/usageLimit'
+
+export const dynamic = 'force-dynamic'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,18 +40,10 @@ interface AttemptRecord {
 
 interface FetchResult {
   question: QuestionRow | null
-  coachNote: string | null  // passed to AI so it communicates context naturally
+  coachNote: string | null
 }
 
 // ─── Spaced repetition question fetch ────────────────────────────────────────
-// Priority order:
-// 1. Never attempted                         ← always first
-// 2. Attempted 30+ days ago, got wrong       ← high refresh priority
-// 3. Attempted 30+ days ago, got correct     ← reinforce
-// 4. Attempted 7–30 days ago, got wrong      ← only if nothing else left
-// 5. Attempted 7–30 days ago, got correct    ← last resort
-// 6. Attempted within last 7 days            ← skip entirely
-// 7. Nothing available                       ← tell student gracefully
 
 async function fetchQuestion(
   userId: string,
@@ -64,46 +51,34 @@ async function fetchQuestion(
   topic?: string,
   examType: string = 'JAMB'
 ): Promise<FetchResult> {
+  const SKIP_DAYS    = 7
+  const REFRESH_DAYS = 30
+  const now          = new Date()
 
-  const SKIP_DAYS = 7      // Questions within this window are skipped
-  const REFRESH_DAYS = 30  // Questions older than this are eligible for refresh
+  const skipCutoff    = new Date(now); skipCutoff.setDate(now.getDate() - SKIP_DAYS)
+  const refreshCutoff = new Date(now); refreshCutoff.setDate(now.getDate() - REFRESH_DAYS)
 
-  const now = new Date()
-
-  const skipCutoff = new Date(now)
-  skipCutoff.setDate(now.getDate() - SKIP_DAYS)
-
-  const refreshCutoff = new Date(now)
-  refreshCutoff.setDate(now.getDate() - REFRESH_DAYS)
-
-  // ── Fetch all attempts for this student ───────────────────────────────────
   const { data: rawAttempts } = await supabaseAdmin
     .from('attempts')
-    .select('question_id, is_correct, created_at')
+    .select('question_id, is_correct, attempt_timestamp')
     .eq('clerk_user_id', userId)
 
-  const attempts = (rawAttempts || []) as AttemptRecord[]
+  const attempts = (rawAttempts || []) as { question_id: string; is_correct: boolean; attempt_timestamp: string }[]
 
-  // Build map: question_id → most recent attempt
   const attemptMap = new Map<string, { last_attempted: Date; is_correct: boolean }>()
-
   for (const attempt of attempts) {
-    const date = new Date(attempt.created_at)
+    const date     = new Date(attempt.attempt_timestamp)
     const existing = attemptMap.get(attempt.question_id)
     if (!existing || date > existing.last_attempted) {
-      attemptMap.set(attempt.question_id, {
-        last_attempted: date,
-        is_correct: attempt.is_correct,
-      })
+      attemptMap.set(attempt.question_id, { last_attempted: date, is_correct: attempt.is_correct })
     }
   }
 
-  // ── Categorise attempted question IDs ─────────────────────────────────────
-  const recentIds: string[]        = []  // within 7 days — always skip
-  const refreshWrongIds: string[]  = []  // 30+ days ago, wrong
-  const refreshCorrectIds: string[] = [] // 30+ days ago, correct
-  const midWrongIds: string[]      = []  // 7–30 days, wrong
-  const midCorrectIds: string[]    = []  // 7–30 days, correct
+  const recentIds: string[]         = []
+  const refreshWrongIds: string[]   = []
+  const refreshCorrectIds: string[] = []
+  const midWrongIds: string[]       = []
+  const midCorrectIds: string[]     = []
 
   Array.from(attemptMap.entries()).forEach(([qId, data]) => {
     if (data.last_attempted > skipCutoff) {
@@ -117,91 +92,54 @@ async function fetchQuestion(
 
   const allAttemptedIds = Array.from(attemptMap.keys())
 
-  // ── Helper: pick one random question from a filtered set ─────────────────
-  const pickOne = async (
-    excludeIds: string[],
-    includeOnly?: string[]
-  ): Promise<QuestionRow | null> => {
+  const pickOne = async (excludeIds: string[], includeOnly?: string[]): Promise<QuestionRow | null> => {
     let query = supabaseAdmin
       .from('questions')
-      .select(
-        'id, question_text, option_1, option_2, option_3, option_4, option_5, ' +
-        'correct_answer_index, subject, topic, subtopic, year, exam_type, ' +
-        'explanation, has_diagram, diagram_description'
-      )
+      .select('id, question_text, option_1, option_2, option_3, option_4, option_5, correct_answer_index, subject, topic, subtopic, year, exam_type, explanation, has_diagram, diagram_description')
       .eq('subject', subject)
       .eq('exam_type', examType)
 
     if (topic) query = query.eq('topic', topic)
-
     if (includeOnly && includeOnly.length > 0) {
-      // Only within this set — already filtered, no need to exclude
       query = query.in('id', includeOnly)
-    } else {
-      // Exclude recently attempted
-      if (excludeIds.length > 0) {
-        query = query.not('id', 'in', `(${excludeIds.join(',')})`)
-      }
+    } else if (excludeIds.length > 0) {
+      query = query.not('id', 'in', `(${excludeIds.join(',')})`)
     }
 
     const { data } = await query
-    
-    const results = (data ?? []) as unknown as QuestionRow[]
+    const results  = (data ?? []) as unknown as QuestionRow[]
     if (results.length === 0) return null
-
-    // Pick random from results
     return results[Math.floor(Math.random() * results.length)]
   }
 
-  // ── Priority 1: Never attempted ───────────────────────────────────────────
   const fresh = await pickOne(allAttemptedIds)
-  if (fresh) {
-    return { question: fresh, coachNote: null }
-  }
+  if (fresh) return { question: fresh, coachNote: null }
 
-  // ── Priority 2: 30+ days ago, wrong ──────────────────────────────────────
   if (refreshWrongIds.length > 0) {
     const q = await pickOne([], refreshWrongIds)
-    if (q) return {
-      question: q,
-      coachNote: `The student attempted this question over a month ago and got it wrong. Acknowledge this naturally — something like "You've seen this before and it tripped you up — let's fix that today." Then present the question.`
-    }
+    if (q) return { question: q, coachNote: `The student attempted this question over a month ago and got it wrong. Acknowledge this naturally — something like "You've seen this before and it tripped you up — let's fix that today." Then present the question.` }
   }
 
-  // ── Priority 3: 30+ days ago, correct ────────────────────────────────────
   if (refreshCorrectIds.length > 0) {
     const q = await pickOne([], refreshCorrectIds)
-    if (q) return {
-      question: q,
-      coachNote: `The student got this question correct over a month ago. Mention briefly that this is a revision question to keep it locked in — something like "Let's make sure this one is still solid." Then present it.`
-    }
+    if (q) return { question: q, coachNote: `The student got this question correct over a month ago. Mention briefly that this is a revision question — something like "Let's make sure this one is still solid." Then present it.` }
   }
 
-  // ── Priority 4: 7–30 days ago, wrong ─────────────────────────────────────
   if (midWrongIds.length > 0) {
     const q = await pickOne([], midWrongIds)
-    if (q) return {
-      question: q,
-      coachNote: `The student attempted this question recently and got it wrong. Acknowledge it without discouraging them — something like "This one gave you trouble recently — let's try again with fresh eyes." Then present it.`
-    }
+    if (q) return { question: q, coachNote: `The student attempted this question recently and got it wrong. Acknowledge it without discouraging them — something like "This one gave you trouble recently — let's try again with fresh eyes." Then present it.` }
   }
 
-  // ── Priority 5: 7–30 days ago, correct ───────────────────────────────────
   if (midCorrectIds.length > 0) {
     const q = await pickOne([], midCorrectIds)
-    if (q) return {
-      question: q,
-      coachNote: null
-    }
+    if (q) return { question: q, coachNote: null }
   }
 
-  // ── All questions attempted recently — truly exhausted ────────────────────
-  const topicLabel = topic ? `"${topic}" in ${subject}` : subject
   return {
     question: null,
     coachNote: topic
-      ? `Tell the student warmly that they have practiced all available questions on "${topic}" in ${subject} within the last week — which is genuinely impressive. Suggest they either try a different topic in ${subject}, switch to another subject, or come back in a few days when these questions refresh. Do not make them feel stuck — frame it as progress.`
-      : `Tell the student warmly that they have worked through all available ${subject} questions recently. Suggest switching to another subject or returning in a few days. Frame this as real progress — they have covered the full bank.`
+      ? `Tell the student warmly that they have practiced all available questions on "${topic}" in ${subject} within the last week. Suggest they try a different topic in ${subject}, switch to another subject, or come back in a few days. Frame it as progress.`
+      : `Tell the student warmly that they have worked through all available ${subject} questions recently. Suggest switching to another subject or returning in a few days. Frame this as real progress.`,
   }
 }
 
@@ -209,7 +147,7 @@ async function fetchQuestion(
 
 function formatQuestionForAI(q: QuestionRow): string {
   const letters = ['A', 'B', 'C', 'D', 'E']
-  const options = [q.option_1, q.option_2, q.option_3, q.option_4, q.option_5]
+  const options  = [q.option_1, q.option_2, q.option_3, q.option_4, q.option_5]
     .filter(Boolean)
     .map((opt, i) => `${letters[i]}) ${opt}`)
     .join('\n')
@@ -233,19 +171,13 @@ IMPORTANT: Do NOT reveal the correct answer or index to the student. Present the
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const {
-      user_id,
-      messages,
-      subject,
-      topic,
-      exam_type = 'JAMB',
-    } = body
+    const { user_id, messages, subject, topic, exam_type = 'JAMB' } = body
 
     if (!user_id || !messages?.length) {
       return Response.json({ error: 'user_id and messages are required' }, { status: 400 })
     }
 
-    // ── Step 1: Check usage limit BEFORE touching the API ────────────────────
+    // ── Step 1: Check usage limit ─────────────────────────────────────────────
     const usage = await checkAndIncrementUsage(user_id)
     if (!usage.allowed) {
       return Response.json({
@@ -257,80 +189,42 @@ export async function POST(request: Request) {
       })
     }
 
-    // ── Step 2: Fetch student context ─────────────────────────────────────────
-    // ── Step 2: Fetch student context (direct DB — no HTTP self-call) ─────────
-const [
-  { data: userData },
-  { data: metricsData },
-  { data: weakTopicsData },
-  { data: recentSessionsData },
-] = await Promise.all([
-  supabaseAdmin
-    .from('users')
-    .select('full_name, exam_type, target_score, subscription_status, subjects, created_at')
-    .eq('clerk_user_id', user_id)
-    .single(),
-  supabaseAdmin
-    .from('user_metrics')
-    .select('total_questions_answered, overall_accuracy, accuracy_by_subject, current_streak_days, longest_streak, first_70_percent_achieved')
-    .eq('clerk_user_id', user_id)
-    .single(),
-  supabaseAdmin
-    .from('weak_topics')
-    .select('subject, topic, accuracy, attempts_count')
-    .eq('clerk_user_id', user_id)
-    .order('accuracy', { ascending: true })
-    .limit(10),
-  supabaseAdmin
-    .from('practice_sessions')
-    .select('session_id, score, total_questions, percentage, created_at')
-    .eq('clerk_user_id', user_id)
-    .order('created_at', { ascending: false })
-    .limit(5),
-])
+    // ── Step 2: Fetch student context directly from DB ────────────────────────
+    const baseUrl    = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
+    const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`, {
+      cache: 'no-store',
+      headers: { 'x-internal-call': process.env.INTERNAL_API_SECRET ?? '' },
+    })
+    const context: StudentContext = await contextRes.json()
 
-const context: StudentContext = contextData
     // ── Step 3: Detect if student wants a question ────────────────────────────
-    const lastUserMessage = [...messages]
-      .reverse()
-      .find((m: ChatMessage) => m.role === 'user')
-    const userText = lastUserMessage?.content?.toLowerCase() || ''
+    const lastUserMessage = [...messages].reverse().find((m: ChatMessage) => m.role === 'user')
+    const userText        = lastUserMessage?.content?.toLowerCase() || ''
 
     const wantsQuestion =
-      userText.includes('question') ||
-      userText.includes('practice') ||
-      userText.includes('test me') ||
-      userText.includes('give me') ||
-      userText.includes('ask me') ||
-      userText.includes('quiz') ||
-      userText.includes('next') ||
-      userText.includes('another')
+      userText.includes('question') || userText.includes('practice') ||
+      userText.includes('test me')  || userText.includes('give me')  ||
+      userText.includes('ask me')   || userText.includes('quiz')     ||
+      userText.includes('next')     || userText.includes('another')
 
-    // ── Step 4: Fetch question using spaced repetition logic ──────────────────
-    let questionContext = ''
+    // ── Step 4: Fetch question using spaced repetition ────────────────────────
+    let questionContext    = ''
     let fetchedQuestionId: string | null = null
 
     if (wantsQuestion && subject) {
-      const { question, coachNote } = await fetchQuestion(
-        user_id,
-        subject,
-        topic,
-        exam_type
-      )
+      const { question, coachNote } = await fetchQuestion(user_id, subject, topic, exam_type)
 
       if (question) {
         fetchedQuestionId = question.id
-        questionContext = `\n\n=== QUESTION FETCHED FROM DATABASE ===\n`
+        questionContext   = `\n\n=== QUESTION FETCHED FROM DATABASE ===\n`
         if (coachNote) {
           questionContext += `Coach note (use this to frame the question naturally — do not quote it verbatim): ${coachNote}\n\n`
         }
         questionContext += formatQuestionForAI(question)
       } else if (coachNote) {
-        // No question available — AI handles it gracefully using the note
         questionContext = `\n\n=== NO QUESTION AVAILABLE ===\nCoach note: ${coachNote}`
       }
     } else if (wantsQuestion && !subject) {
-      // Student wants a question but hasn't picked a subject
       questionContext = `\n\n=== NO SUBJECT SELECTED ===\nThe student wants a question but has not selected a subject. Ask them which subject they want to practice — give them 2–3 options based on their weak areas in the student context above.`
     }
 
@@ -365,14 +259,12 @@ GENERAL RULES:
 
     // ── Step 6: Build conversation — last 6 messages only ────────────────────
     const trimmedHistory: ChatMessage[] = messages.slice(-6)
-    const lastMessage = trimmedHistory[trimmedHistory.length - 1]
+    const lastMessage       = trimmedHistory[trimmedHistory.length - 1]
     const historyWithoutLast = trimmedHistory.slice(0, -1)
 
     const historyContext = historyWithoutLast.length > 0
       ? historyWithoutLast
-          .map((m: ChatMessage) =>
-            `${m.role === 'user' ? 'Student' : 'Coach'}: ${m.content}`
-          )
+          .map((m: ChatMessage) => `${m.role === 'user' ? 'Student' : 'Coach'}: ${m.content}`)
           .join('\n\n') + '\n\n'
       : ''
 
@@ -381,14 +273,7 @@ GENERAL RULES:
       : lastMessage.content
 
     // ── Step 7: Call Claude ───────────────────────────────────────────────────
-    const reply = await callClaude(
-      systemPrompt,
-      userPrompt,
-      0.7,
-      600,
-      true,
-      false  // Haiku — fast and cost-efficient for chat
-    )
+    const reply = await callClaude(systemPrompt, userPrompt, 0.7, 600, true, false)
 
     // ── Step 8: Log interaction ───────────────────────────────────────────────
     await logChatInteraction(user_id, subject || null, topic || null, reply)
@@ -398,10 +283,10 @@ GENERAL RULES:
       reply,
       fetched_question_id: fetchedQuestionId,
       usage: {
-        used: usage.used + 1,
-        limit: usage.limit,
+        used:      usage.used + 1,
+        limit:     usage.limit,
         remaining: usage.limit - usage.used - 1,
-        plan: usage.plan,
+        plan:      usage.plan,
       },
     })
 
@@ -409,5 +294,4 @@ GENERAL RULES:
     console.error('[ai/chat] Error:', err.message)
     return Response.json({ error: err.message }, { status: 500 })
   }
-      }
-    
+  }
