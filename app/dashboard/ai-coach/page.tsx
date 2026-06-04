@@ -7,6 +7,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
+export const dynamic = 'force-dynamic'
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Message {
