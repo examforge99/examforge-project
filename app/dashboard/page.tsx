@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, Suspense } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PRICING, PLAN_KEYS, type PlanKey } from '@/lib/pricing'
@@ -88,7 +88,14 @@ const NAV = [
       </svg>
     ),
   },
-
+  {
+    id: 'results', label: 'Results',
+    icon: (a: boolean) => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={a ? '#0f172a' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+      </svg>
+    ),
+  },
   {
     id: 'account', label: 'Account',
     icon: (a: boolean) => (
@@ -487,9 +494,10 @@ function AccountSheet({ data, onSignOut, onSubscribe, onAICoach }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { userId, signOut } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [data, setData]           = useState<DashboardData | null>(null)
   const [news, setNews]           = useState<NewsItem[]>([])
@@ -497,9 +505,6 @@ export default function DashboardPage() {
   const [loading, setLoading]     = useState(true)
   const [aiLoading, setAiLoading] = useState(false)
   const [sheet, setSheet]         = useState<Sheet>('none')
-  const { userId, signOut } = useAuth()
-  const router = useRouter()
-  const searchParams = useSearchParams()  // ← add this
   const [activeTab, setActiveTab] = useState('home')
   const [visible, setVisible]     = useState(false)
 
@@ -537,6 +542,14 @@ export default function DashboardPage() {
     }
     fetchWelcome()
   }, [userId])
+
+  // ── Handle payment redirect ────────────────────────────────────────────────
+  useEffect(() => {
+    if (searchParams.get('payment') === 'failed') {
+      setSheet('subscribe')
+      router.replace('/dashboard')
+    }
+  }, [searchParams])
 
   const handleSignOut = async () => { await signOut(); router.push('/login') }
   const handlePracticeSelect = (mode: string) => { setSheet('none'); setTimeout(() => router.push(`/practice?mode=${mode}`), 300) }
@@ -904,13 +917,12 @@ export default function DashboardPage() {
       </BottomSheet>
     </div>
   )
-          }
-
-function DashboardContent() {
-  // everything inside stays the same
-
-// Then at the very bottom add:
-import { Suspense } from 'react'
-export default function DashboardPage() {
-  return <Suspense fallback={null}><DashboardContent /></Suspense>
 }
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardContent />
+    </Suspense>
+  )
+        }
