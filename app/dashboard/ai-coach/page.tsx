@@ -1,15 +1,12 @@
 'use client'
 
 // app/dashboard/ai-coach/page.tsx
-// Dedicated AI Coach chat page — conversational interface with ExamForge AI
-// Fetches real JAMB/WAEC questions from DB, never generates them
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@clerk/nextjs'
 
 export const dynamic = 'force-dynamic'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Message {
   role: 'user' | 'assistant'
@@ -24,33 +21,27 @@ interface Usage {
   plan: string
 }
 
-// ─── Subject options ──────────────────────────────────────────────────────────
-
-const SUBJECTS = [
-  'Mathematics', 'English', 'Physics', 'Chemistry', 'Biology',
-  'Economics', 'Government', 'Literature', 'History', 'Geography',
-  'Commerce', 'Accounting', 'Civic Education',
-  'Christian Religious Studies', 'Islamic Religious Studies',
-  'Yoruba', 'Igbo', 'Hausa', 'French',
+const quickPrompts = [
+  { label: '📝 Practice question', text: 'Give me a practice question' },
+  { label: '📊 My weak areas', text: 'What are my weakest topics right now?' },
+  { label: '💡 Explain a concept', text: 'Explain a concept to me:' },
+  { label: '📅 Study plan', text: 'Create a study plan for my upcoming exam' },
 ]
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AICoachPage() {
   const router = useRouter()
+  const { userId } = useAuth()
 
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: "Good day! I'm your ExamForge AI Coach. I know your performance data and I'm here to help you study smarter — not harder.\n\nTell me what subject you want to work on, ask me to explain a concept, or say \"give me a question\" and I'll fetch one from our question bank for you to practice.",
+      content: "Good day! I'm your ExamForge AI Coach.\n\nI know your performance data and I'm here to help you study smarter — not harder.\n\nAsk me anything, request a practice question, or tell me what topic is giving you trouble.",
       timestamp: new Date(),
     },
   ])
 
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [subject, setSubject] = useState('')
-  const [topic, setTopic] = useState('')
   const [usage, setUsage] = useState<Usage | null>(null)
   const [sessionQuestionIds, setSessionQuestionIds] = useState<string[]>([])
   const [usageExceeded, setUsageExceeded] = useState(false)
@@ -58,29 +49,19 @@ export default function AICoachPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // Get user_id from localStorage or your auth system
-  const getUserId = (): string => {
-    if (typeof window === 'undefined') return ''
-    return localStorage.getItem('examforge_user_id') || ''
-  }
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
-
-  // ── Send message ────────────────────────────────────────────────────────────
 
   const sendMessage = async () => {
     const text = input.trim()
     if (!text || loading || usageExceeded) return
 
-    const userId = getUserId()
     if (!userId) {
       router.push('/login')
       return
     }
 
-    // Add user message immediately
     const userMessage: Message = { role: 'user', content: text, timestamp: new Date() }
     const updatedMessages = [...messages, userMessage]
     setMessages(updatedMessages)
@@ -94,8 +75,6 @@ export default function AICoachPage() {
         body: JSON.stringify({
           user_id: userId,
           messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
-          subject: subject || undefined,
-          topic: topic || undefined,
           exam_type: 'JAMB',
           session_question_ids: sessionQuestionIds,
         }),
@@ -113,7 +92,6 @@ export default function AICoachPage() {
         return
       }
 
-      // Track fetched question IDs to avoid repeats this session
       if (data.fetched_question_id) {
         setSessionQuestionIds(prev => [...prev, data.fetched_question_id])
       }
@@ -145,89 +123,58 @@ export default function AICoachPage() {
     }
   }
 
-  // ── Quick prompts ───────────────────────────────────────────────────────────
-
-  const quickPrompts = [
-    { label: '📝 Give me a question', text: 'Give me a practice question' },
-    { label: '📊 Review my weak areas', text: 'What are my weakest topics right now?' },
-    { label: '💡 Explain a concept', text: 'Explain this concept to me:' },
-    { label: '📅 Study plan', text: 'Create a study plan for my exam' },
-  ]
-
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="flex flex-col h-screen bg-[#0a0f1e]">
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-[#0d1426] border-b border-white/5">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
-            className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-xl"
+            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           >
-            ←
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-blue-700 flex items-center justify-center text-white text-sm font-bold">
-              E
+
+          <div className="flex items-center gap-3">
+            {/* AI avatar with glow */}
+            <div className="relative">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-900/50">
+                AI
+              </div>
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0d1426]" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">
-                ExamForge AI
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Your study coach</p>
+              <p className="text-sm font-semibold text-white leading-tight">ExamForge AI</p>
+              <p className="text-xs text-emerald-400">Online · ready to help</p>
             </div>
           </div>
         </div>
 
-        {/* Usage badge */}
         {usage && (
-          <div className={`text-xs px-2 py-1 rounded-full font-medium ${
+          <div className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
             usage.remaining <= 3
-              ? 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
-              : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+              ? 'bg-red-900/30 text-red-400 border-red-800/50'
+              : 'bg-blue-900/30 text-blue-400 border-blue-800/50'
           }`}>
-            {usage.remaining} left today
+            {usage.remaining} msgs left
           </div>
         )}
       </div>
 
-      {/* ── Subject selector ── */}
-      <div className="flex gap-2 px-4 py-2 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 overflow-x-auto">
-        <select
-          value={subject}
-          onChange={e => { setSubject(e.target.value); setTopic('') }}
-          className="text-xs px-3 py-1.5 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-fit"
-        >
-          <option value="">All subjects</option>
-          {SUBJECTS.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5">
 
-        {subject && (
-          <input
-            type="text"
-            placeholder="Topic (optional)"
-            value={topic}
-            onChange={e => setTopic(e.target.value)}
-            className="text-xs px-3 py-1.5 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-32"
-          />
-        )}
-      </div>
-
-      {/* ── Messages ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-
-        {/* Quick prompts — only show at start */}
+        {/* Quick prompts — only at start */}
         {messages.length === 1 && (
-          <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="grid grid-cols-2 gap-2 mb-2">
             {quickPrompts.map((p, i) => (
               <button
                 key={i}
                 onClick={() => setInput(p.text)}
-                className="text-left text-xs px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                className="text-left text-xs px-3 py-3 rounded-2xl border border-white/10 bg-white/5 text-gray-300 hover:bg-blue-900/30 hover:border-blue-700/50 hover:text-blue-300 transition-all"
               >
                 {p.label}
               </button>
@@ -238,19 +185,19 @@ export default function AICoachPage() {
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-white text-xs font-bold mr-2 mt-1 flex-shrink-0">
-                E
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-1 shadow-md shadow-blue-900/50">
+                AI
               </div>
             )}
 
             <div
               className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                 msg.role === 'user'
-                  ? 'bg-blue-700 text-white rounded-tr-sm'
-                  : 'bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-800 rounded-tl-sm shadow-sm'
+                  ? 'bg-blue-600 text-white rounded-tr-sm shadow-lg shadow-blue-900/30'
+                  : 'bg-[#131d35] text-gray-100 border border-white/8 rounded-tl-sm shadow-sm'
               }`}
             >
               {msg.content}
@@ -260,32 +207,30 @@ export default function AICoachPage() {
 
         {/* Typing indicator */}
         {loading && (
-          <div className="flex justify-start">
-            <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-white text-xs font-bold mr-2 mt-1">
-              E
+          <div className="flex gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-1">
+              AI
             </div>
-            <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+            <div className="bg-[#131d35] border border-white/8 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
               <div className="flex gap-1 items-center h-4">
-                <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
         )}
 
-        {/* Usage exceeded CTA */}
+        {/* Usage exceeded */}
         {usageExceeded && (
-          <div className="mx-auto max-w-sm bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-center">
-            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">
-              Daily limit reached
-            </p>
-            <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
-              Upgrade your plan to get more AI coaching sessions every day.
+          <div className="mx-auto max-w-sm bg-amber-900/20 border border-amber-700/30 rounded-2xl p-4 text-center">
+            <p className="text-sm font-semibold text-amber-300 mb-1">Daily limit reached</p>
+            <p className="text-xs text-amber-400/80 mb-3">
+              Upgrade to keep studying with AI coaching.
             </p>
             <button
               onClick={() => router.push('/dashboard/subscription')}
-              className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-full font-medium transition-colors"
+              className="text-xs bg-amber-600 hover:bg-amber-500 text-white px-5 py-2 rounded-full font-medium transition-colors"
             >
               Upgrade now
             </button>
@@ -295,8 +240,8 @@ export default function AICoachPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ── Input area ── */}
-      <div className="px-4 py-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+      {/* Input area */}
+      <div className="px-4 py-3 bg-[#0d1426] border-t border-white/5">
         <div className="flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -305,20 +250,18 @@ export default function AICoachPage() {
             onKeyDown={handleKeyDown}
             placeholder={
               usageExceeded
-                ? 'Daily limit reached — upgrade to continue'
-                : subject
-                  ? `Ask about ${subject}...`
-                  : 'Ask a question, request practice, or just chat...'
+                ? 'Upgrade to continue chatting...'
+                : 'Ask anything about your exam prep...'
             }
             disabled={loading || usageExceeded}
             rows={1}
-            className="flex-1 resize-none text-sm px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed max-h-32"
+            className="flex-1 resize-none text-sm px-4 py-3 rounded-2xl border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent disabled:opacity-40 disabled:cursor-not-allowed max-h-32"
             style={{ minHeight: '44px' }}
           />
           <button
             onClick={sendMessage}
             disabled={loading || !input.trim() || usageExceeded}
-            className="w-11 h-11 rounded-full bg-blue-700 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors flex-shrink-0"
+            className="w-11 h-11 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white transition-all shadow-lg shadow-blue-900/40 flex-shrink-0"
           >
             {loading ? (
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -333,10 +276,9 @@ export default function AICoachPage() {
           </button>
         </div>
 
-        {/* Usage bar */}
         {usage && (
           <div className="mt-2 flex items-center gap-2">
-            <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className="flex-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all ${
                   usage.remaining <= 3 ? 'bg-red-500' : 'bg-blue-500'
@@ -344,13 +286,12 @@ export default function AICoachPage() {
                 style={{ width: `${((usage.limit - usage.remaining) / usage.limit) * 100}%` }}
               />
             </div>
-            <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-              {usage.used}/{usage.limit} today
+            <span className="text-xs text-gray-600 flex-shrink-0">
+              {usage.used}/{usage.limit}
             </span>
           </div>
         )}
       </div>
     </div>
   )
-      }
-                  
+          }
