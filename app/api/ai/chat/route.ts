@@ -190,12 +190,105 @@ export async function POST(request: Request) {
     }
 
     // ── Step 2: Fetch student context directly from DB ────────────────────────
-    const baseUrl    = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
-    const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`, {
-      cache: 'no-store',
-      headers: { 'x-internal-call': process.env.INTERNAL_API_SECRET ?? '' },
-    })
-    const context: StudentContext = await contextRes.json()
+// ── Step 2: Fetch student context directly from DB ────────────────────────
+const { data: userData } = await supabaseAdmin
+  .from('users')
+  .select('exam_type, subscription_status, created_at')
+  .eq('clerk_user_id', user_id)
+  .single()
+
+const [streakRes, metricsRes, attemptsRes, summaryRes, examRes] = await Promise.all([
+  supabaseAdmin.from('streaks')
+    .select('current_streak_days, last_study_date, streak_active')
+    .eq('clerk_user_id', user_id).maybeSingle(),
+
+  supabaseAdmin.from('metrics')
+    .select('subject, topic, accuracy_percentage, total_attempted, total_correct')
+    .eq('clerk_user_id', user_id),
+
+  supabaseAdmin.from('attempts')
+    .select('is_correct, attempt_timestamp, session_id')
+    .eq('clerk_user_id', user_id)
+    .order('attempt_timestamp', { ascending: false })
+    .limit(200),
+
+  supabaseAdmin.from('ai_student_summary')
+    .select('summary_text')
+    .eq('clerk_user_id', user_id).maybeSingle(),
+
+  supabaseAdmin.from('exam_calendar')
+    .select('event_name, event_date')
+    .eq('exam_type', userData?.exam_type ?? 'JAMB')
+    .gte('event_date', new Date().toISOString())
+    .order('event_date', { ascending: true })
+    .limit(1).maybeSingle(),
+])
+
+const metrics  = metricsRes.data ?? []
+const attempts = attemptsRes.data ?? []
+
+// Build accuracy by subject and topic
+const subjectTotals: Record<string, { correct: number; attempted: number }> = {}
+for (const m of metrics) {
+  if (!subjectTotals[m.subject]) subjectTotals[m.subject] = { correct: 0, attempted: 0 }
+  subjectTotals[m.subject].correct   += m.total_correct
+  subjectTotals[m.subject].attempted += m.total_attempted
+}
+const accuracyBySubject: Record<string, number> = {}
+for (const [s, { correct, attempted }] of Object.entries(subjectTotals)) {
+  accuracyBySubject[s] = attempted > 0 ? Math.round((correct / attempted) * 100) : 0
+}
+
+const weakTopics = metrics
+  .filter(m => m.total_attempted >= 5 && m.accuracy_percentage < 50)
+  .sort((a, b) => a.accuracy_percentage - b.accuracy_percentage)
+  .slice(0, 5)
+  .map(m => ({ subject: m.subject, topic: m.topic, accuracy: Math.round(m.accuracy_percentage) }))
+
+const daysUntilExam = examRes.data?.event_date
+  ? Math.max(0, Math.floor((new Date(examRes.data.event_date).getTime() - Date.now()) / 86_400_000))
+  : null
+
+const context: StudentContext = {
+  user: {
+    id:                  user_id,
+    exam_date:           examRes.data?.event_date ?? null,
+    days_until_exam:     daysUntilExam,
+    days_on_platform:    userData?.created_at
+      ? Math.floor((Date.now() - new Date(userData.created_at).getTime()) / 86_400_000)
+      : 0,
+    subscription_status: userData?.subscription_status ?? 'free',
+  },
+  streak: {
+    current_streak_days: streakRes.data?.current_streak_days ?? 0,
+    last_study_date:     streakRes.data?.last_study_date ?? null,
+    streak_active:       streakRes.data?.streak_active ?? false,
+  },
+  accuracy_by_subject:  accuracyBySubject,
+  accuracy_by_topic:    metrics.map(m => ({
+    subject:         m.subject,
+    topic:           m.topic,
+    accuracy:        Math.round(m.accuracy_percentage),
+    total_attempted: m.total_attempted,
+  })),
+  weak_topics:          weakTopics,
+  neglected_subjects:   [],
+  recent_sessions:      [],
+  milestones: {
+    total_questions_answered: Object.values(subjectTotals).reduce((s, x) => s + x.attempted, 0),
+    total_correct:            Object.values(subjectTotals).reduce((s, x) => s + x.correct, 0),
+    overall_accuracy:         0,
+    reached_100_questions:    false,
+    reached_500_questions:    false,
+    first_70_percent_achieved: false,
+    longest_streak:           0,
+  },
+  pending_session: null,
+  ai_memory: {
+    summary:             summaryRes.data?.summary_text ?? '',
+    recent_interactions: [],
+  },
+}
 
     // ── Step 3: Detect if student wants a question ────────────────────────────
     const lastUserMessage = [...messages].reverse().find((m: ChatMessage) => m.role === 'user')
