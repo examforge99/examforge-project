@@ -162,7 +162,7 @@ export async function GET(request: Request) {
         { reference, paystack_status: paystackData.data?.status }
       )
 
-      return Response.redirect(`${baseUrl}/subscribe?failed=true`)
+      return Response.redirect(`${baseUrl}/dashboard?payment=failed`)
     }
 
     // ── Payment successful ────────────────────────────────────────────────
