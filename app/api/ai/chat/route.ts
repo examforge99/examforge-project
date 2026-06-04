@@ -289,33 +289,7 @@ const [
     .limit(5),
 ])
 
-const context: StudentContext = {
-  user: {
-    full_name: userData?.full_name ?? 'Student',
-    exam_type: userData?.exam_type ?? 'JAMB',
-    target_score: userData?.target_score ?? null,
-    subscription_status: userData?.subscription_status ?? 'free',
-    days_on_platform: userData?.created_at
-      ? Math.floor((Date.now() - new Date(userData.created_at).getTime()) / 86400000)
-      : 0,
-  },
-  metrics: {
-    total_questions_answered: metricsData?.total_questions_answered ?? 0,
-    overall_accuracy: metricsData?.overall_accuracy ?? 0,
-    accuracy_by_subject: metricsData?.accuracy_by_subject ?? {},
-    current_streak_days: metricsData?.current_streak_days ?? 0,
-    longest_streak: metricsData?.longest_streak ?? 0,
-    first_70_percent_achieved: metricsData?.first_70_percent_achieved ?? false,
-  },
-  weak_topics: weakTopicsData ?? [],
-  recent_sessions: (recentSessionsData ?? []).map(s => ({
-    session_id: s.session_id,
-    score: s.score,
-    total_questions: s.total_questions,
-    percentage: s.percentage,
-    date: s.created_at,
-  })),
-}
+const context: StudentContext = contextDat
     // ── Step 3: Detect if student wants a question ────────────────────────────
     const lastUserMessage = [...messages]
       .reverse()
