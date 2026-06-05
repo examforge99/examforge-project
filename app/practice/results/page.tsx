@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useUser } from '@clerk/nextjs'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ interface AIReview {
   next_subject: string | null
 }
 
+type Filter = 'all' | 'correct' | 'wrong' | 'skipped'
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E']
@@ -58,52 +61,102 @@ function formatTime(seconds: number): string {
   return `${s}s`
 }
 
-function getGrade(percentage: number): { grade: string; color: string; bg: string } {
-  if (percentage >= 80) return { grade: 'A', color: '#16a34a', bg: '#f0fdf4' }
-  if (percentage >= 70) return { grade: 'B', color: '#2563eb', bg: '#eff6ff' }
-  if (percentage >= 60) return { grade: 'C', color: '#d97706', bg: '#fffbeb' }
-  if (percentage >= 50) return { grade: 'D', color: '#ea580c', bg: '#fff7ed' }
-  return                        { grade: 'F', color: '#dc2626', bg: '#fef2f2' }
+function getGrade(pct: number) {
+  if (pct >= 80) return { grade: 'A', accent: '#00e5a0', dim: 'rgba(0,229,160,0.15)' }
+  if (pct >= 70) return { grade: 'B', accent: '#3b9eff', dim: 'rgba(59,158,255,0.15)' }
+  if (pct >= 60) return { grade: 'C', accent: '#f5c542', dim: 'rgba(245,197,66,0.15)' }
+  if (pct >= 50) return { grade: 'D', accent: '#ff8c42', dim: 'rgba(255,140,66,0.15)' }
+  return              { grade: 'F', accent: '#ff4f6b', dim: 'rgba(255,79,107,0.15)' }
 }
 
-function getScoreMessage(percentage: number): string {
-  if (percentage >= 80) return 'Excellent work! 🎉'
-  if (percentage >= 70) return 'Good job! Keep it up 👍'
-  if (percentage >= 60) return 'Not bad — room to grow 📈'
-  if (percentage >= 50) return 'You passed, but review the misses 📚'
-  return "Keep studying — you'll get there 💪"
+function getVerdict(pct: number): string {
+  if (pct >= 80) return 'Outstanding'
+  if (pct >= 70) return 'Well Done'
+  if (pct >= 60) return 'Keep Pushing'
+  if (pct >= 50) return 'Just Made It'
+  return 'Try Again'
 }
 
-// ─── Score Ring ────────────────────────────────────────────────────────────────
+// ─── Score Arc ─────────────────────────────────────────────────────────────────
 
-function ScoreRing({ percentage, grade, color }: { percentage: number; grade: string; color: string }) {
-  const r = 54
-  const circ = 2 * Math.PI * r
-  const offset = circ - (percentage / 100) * circ
+function ScoreArc({ percentage, accent }: { percentage: number; accent: string }) {
+  const size = 160
+  const cx = size / 2
+  const cy = size / 2
+  const r = 64
+  // Draw a 270° arc from bottom-left to bottom-right
+  const startAngle = 135
+  const endAngle = 135 + 270 * (percentage / 100)
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const trackEnd = 135 + 270
+
+  const arcPath = (from: number, to: number) => {
+    const sx = cx + r * Math.cos(toRad(from))
+    const sy = cy + r * Math.sin(toRad(from))
+    const ex = cx + r * Math.cos(toRad(to))
+    const ey = cy + r * Math.sin(toRad(to))
+    const large = to - from > 180 ? 1 : 0
+    return `M ${sx} ${sy} A ${r} ${r} 0 ${large} 1 ${ex} ${ey}`
+  }
 
   return (
-    <div style={{ position: 'relative', width: 140, height: 140 }}>
-      <svg width="140" height="140" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="70" cy="70" r={r} fill="none" stroke="#e2e8f0" strokeWidth="10" />
-        <circle
-          cx="70" cy="70" r={r} fill="none"
-          stroke={color} strokeWidth="10"
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size}>
+        <defs>
+          <linearGradient id="arcGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor={accent} stopOpacity="0.6" />
+            <stop offset="100%" stopColor={accent} />
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        {/* Track */}
+        <path
+          d={arcPath(startAngle, trackEnd)}
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth="10"
           strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 1s ease' }}
         />
+        {/* Progress */}
+        {percentage > 0 && (
+          <path
+            d={arcPath(startAngle, endAngle)}
+            fill="none"
+            stroke={`url(#arcGrad)`}
+            strokeWidth="10"
+            strokeLinecap="round"
+            filter="url(#glow)"
+            style={{
+              strokeDasharray: `${2 * Math.PI * r}`,
+              strokeDashoffset: 0,
+            }}
+          />
+        )}
       </svg>
       <div style={{
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
+        gap: 2,
       }}>
-        <span style={{ fontSize: 28, fontWeight: 900, color, fontFamily: 'Georgia, serif', lineHeight: 1 }}>
-          {percentage}%
+        <span style={{
+          fontFamily: "'Playfair Display', Georgia, serif",
+          fontSize: 38, fontWeight: 900,
+          color: accent, lineHeight: 1,
+          textShadow: `0 0 20px ${accent}60`,
+        }}>
+          {percentage}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: 'system-ui' }}>
-          Grade {grade}
+        <span style={{
+          fontFamily: 'system-ui', fontSize: 11,
+          color: 'rgba(255,255,255,0.4)', letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+        }}>
+          percent
         </span>
       </div>
     </div>
@@ -113,199 +166,210 @@ function ScoreRing({ percentage, grade, color }: { percentage: number; grade: st
 // ─── AI Review Card ────────────────────────────────────────────────────────────
 
 function AIReviewCard({ review, loading }: { review: AIReview | null; loading: boolean }) {
-  if (loading) {
-    return (
-      <div style={{
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        borderRadius: 16, padding: '18px 16px', marginBottom: 16,
-        border: '1px solid #334155',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%',
-            background: 'rgba(59,130,246,0.2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14,
-          }}>🤖</div>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', fontFamily: 'system-ui', letterSpacing: '0.05em' }}>
-            AI COACH REVIEW
-          </span>
-        </div>
-        {/* Skeleton lines */}
-        {[100, 85, 92, 60].map((w, i) => (
-          <div key={i} style={{
-            height: 12, borderRadius: 6,
-            background: 'rgba(255,255,255,0.08)',
-            width: `${w}%`, marginBottom: 8,
-            animation: 'pulse 1.5s ease-in-out infinite',
-            animationDelay: `${i * 0.15}s`,
-          }} />
-        ))}
-        <style>{`@keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:0.8} }`}</style>
-      </div>
-    )
-  }
-
-  if (!review) return null
-
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      borderRadius: 16, padding: '18px 16px', marginBottom: 16,
-      border: '1px solid #334155',
-      animation: 'fadeIn 0.5s ease',
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 20, padding: '20px',
+      marginBottom: 16,
+      backdropFilter: 'blur(10px)',
     }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
+      }}>
         <div style={{
-          width: 28, height: 28, borderRadius: '50%',
-          background: 'rgba(59,130,246,0.2)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14,
-        }}>🤖</div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', fontFamily: 'system-ui', letterSpacing: '0.05em' }}>
-          AI COACH REVIEW
+          width: 6, height: 6, borderRadius: '50%',
+          background: '#3b9eff',
+          boxShadow: '0 0 8px #3b9eff',
+        }} />
+        <span style={{
+          fontFamily: 'system-ui', fontSize: 10,
+          fontWeight: 700, letterSpacing: '0.1em',
+          color: 'rgba(255,255,255,0.4)',
+          textTransform: 'uppercase',
+        }}>
+          AI Coach
         </span>
       </div>
 
-      {/* Narrative */}
-      <p style={{
-        fontSize: 14, lineHeight: 1.7,
-        color: '#e2e8f0', margin: '0 0 14px',
-        fontFamily: 'Georgia, serif',
-      }}>
-        {review.narrative}
-      </p>
-
-      {/* Next focus pill */}
-      {(review.next_subject || review.next_topic) && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: 'rgba(59,130,246,0.15)',
-          border: '1px solid rgba(59,130,246,0.3)',
-          borderRadius: 20, padding: '6px 12px',
-        }}>
-          <span style={{ fontSize: 10, color: '#93c5fd', fontFamily: 'system-ui' }}>🎯 FOCUS NEXT</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#60a5fa', fontFamily: 'system-ui' }}>
-            {review.next_topic
-              ? `${review.next_topic}${review.next_subject ? ` · ${review.next_subject}` : ''}`
-              : review.next_subject}
-          </span>
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[95, 80, 88, 55].map((w, i) => (
+            <div key={i} style={{
+              height: 11, borderRadius: 6,
+              background: 'rgba(255,255,255,0.06)',
+              width: `${w}%`,
+              animation: 'shimmer 1.6s ease-in-out infinite',
+              animationDelay: `${i * 0.12}s`,
+            }} />
+          ))}
         </div>
+      ) : review ? (
+        <>
+          <p style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            fontSize: 14, lineHeight: 1.8,
+            color: 'rgba(255,255,255,0.85)',
+            margin: '0 0 16px',
+          }}>
+            {review.narrative}
+          </p>
+          {(review.next_subject || review.next_topic) && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: 'rgba(59,158,255,0.1)',
+              border: '1px solid rgba(59,158,255,0.25)',
+              borderRadius: 100, padding: '7px 14px',
+            }}>
+              <span style={{ fontSize: 12 }}>🎯</span>
+              <span style={{
+                fontFamily: 'system-ui', fontSize: 12,
+                fontWeight: 600, color: '#3b9eff',
+              }}>
+                {review.next_topic
+                  ? `${review.next_topic}${review.next_subject ? ` · ${review.next_subject}` : ''}`
+                  : review.next_subject}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <p style={{
+          fontFamily: 'system-ui', fontSize: 13,
+          color: 'rgba(255,255,255,0.3)', margin: 0,
+        }}>
+          AI review unavailable
+        </p>
       )}
     </div>
   )
 }
 
-// ─── Question Review Card ──────────────────────────────────────────────────────
+// ─── Question Card ─────────────────────────────────────────────────────────────
 
 function QuestionCard({ q }: { q: QuestionResult }) {
-  const [expanded, setExpanded] = useState(false)
+  const [open, setOpen] = useState(false)
 
-  const statusColor = q.skipped ? '#94a3b8' : q.is_correct ? '#16a34a' : '#dc2626'
-  const statusLabel = q.skipped ? 'Skipped' : q.is_correct ? 'Correct' : 'Wrong'
-  const statusBg    = q.skipped ? '#f8fafc'  : q.is_correct ? '#f0fdf4' : '#fef2f2'
+  const accent = q.skipped ? 'rgba(255,255,255,0.2)' : q.is_correct ? '#00e5a0' : '#ff4f6b'
+  const label  = q.skipped ? 'Skip' : q.is_correct ? '✓' : '✗'
 
   return (
     <div style={{
-      background: '#ffffff',
-      border: `1.5px solid ${q.skipped ? '#e2e8f0' : q.is_correct ? '#bbf7d0' : '#fecaca'}`,
-      borderRadius: 16, overflow: 'hidden', marginBottom: 10,
+      background: 'rgba(255,255,255,0.03)',
+      border: `1px solid ${q.is_correct ? 'rgba(0,229,160,0.15)' : q.skipped ? 'rgba(255,255,255,0.06)' : 'rgba(255,79,107,0.15)'}`,
+      borderRadius: 16, overflow: 'hidden', marginBottom: 8,
     }}>
       <button
-        onClick={() => setExpanded(e => !e)}
+        onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', padding: '14px 16px',
           display: 'flex', alignItems: 'center', gap: 12,
           background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
         }}
       >
+        {/* Number badge */}
         <span style={{
-          minWidth: 28, height: 28, borderRadius: '50%',
-          background: statusBg, border: `1.5px solid ${statusColor}`,
+          minWidth: 30, height: 30, borderRadius: 8,
+          background: `${accent}18`,
+          border: `1px solid ${accent}40`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, fontWeight: 700, color: statusColor,
+          fontSize: 11, fontWeight: 800, color: accent,
           fontFamily: 'system-ui', flexShrink: 0,
         }}>
-          {q.question_number}
+          {label === '✓' || label === '✗' ? (
+            <span>{label}</span>
+          ) : (
+            <span style={{ fontSize: 9 }}>SKP</span>
+          )}
         </span>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{
-            fontSize: 13, color: '#0f172a', margin: 0,
-            fontFamily: 'Georgia, serif', lineHeight: 1.4,
+            fontFamily: 'system-ui', fontSize: 13,
+            color: 'rgba(255,255,255,0.8)', margin: 0,
+            lineHeight: 1.4,
             overflow: 'hidden', textOverflow: 'ellipsis',
             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           }}>
-            {q.question_text ?? 'Question unavailable'}
+            {q.question_number}. {q.question_text ?? 'Question unavailable'}
           </p>
           {q.subject && (
-            <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'system-ui', marginTop: 2, display: 'block' }}>
+            <span style={{
+              fontSize: 10, color: 'rgba(255,255,255,0.25)',
+              fontFamily: 'system-ui', marginTop: 3, display: 'block',
+            }}>
               {q.subject}{q.topic ? ` · ${q.topic}` : ''}
             </span>
           )}
         </div>
 
         <span style={{
-          fontSize: 10, fontWeight: 700, color: statusColor,
-          background: statusBg, padding: '3px 8px',
-          borderRadius: 20, fontFamily: 'system-ui', flexShrink: 0,
-        }}>
-          {statusLabel}
-        </span>
+          fontSize: 14, color: 'rgba(255,255,255,0.2)',
+          transform: open ? 'rotate(180deg)' : 'none',
+          transition: 'transform 0.2s',
+          flexShrink: 0,
+        }}>▾</span>
       </button>
 
-      {expanded && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid #f1f5f9' }}>
+      {open && (
+        <div style={{
+          padding: '0 16px 16px',
+          borderTop: '1px solid rgba(255,255,255,0.05)',
+          animation: 'fadeDown 0.2s ease',
+        }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {q.options.map((opt, idx) => {
-              const isSelected = q.selected_index === idx
-              const isCorrect  = q.correct_index === idx
-              let bg = '#f8fafc', border = '#e2e8f0', color = '#334155'
-              if (isCorrect)             { bg = '#f0fdf4'; border = '#16a34a'; color = '#15803d' }
-              if (isSelected && !isCorrect) { bg = '#fef2f2'; border = '#dc2626'; color = '#dc2626' }
+              const isSel = q.selected_index === idx
+              const isOk  = q.correct_index === idx
+              let bg = 'rgba(255,255,255,0.03)'
+              let border = 'rgba(255,255,255,0.07)'
+              let color = 'rgba(255,255,255,0.6)'
+              if (isOk)            { bg = 'rgba(0,229,160,0.08)';  border = 'rgba(0,229,160,0.4)';  color = '#00e5a0' }
+              if (isSel && !isOk)  { bg = 'rgba(255,79,107,0.08)'; border = 'rgba(255,79,107,0.4)'; color = '#ff4f6b' }
 
               return (
                 <div key={idx} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10,
                   padding: '10px 12px', borderRadius: 10,
-                  border: `1.5px solid ${border}`, background: bg,
+                  border: `1px solid ${border}`, background: bg,
                 }}>
                   <span style={{
-                    minWidth: 22, height: 22, borderRadius: '50%',
-                    background: isCorrect ? '#16a34a' : isSelected ? '#dc2626' : '#e2e8f0',
-                    color: (isCorrect || isSelected) ? '#ffffff' : '#64748b',
+                    minWidth: 22, height: 22, borderRadius: 6,
+                    background: isOk ? '#00e5a0' : isSel ? '#ff4f6b' : 'rgba(255,255,255,0.08)',
+                    color: (isOk || isSel) ? '#000' : 'rgba(255,255,255,0.4)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700, flexShrink: 0, fontFamily: 'system-ui',
+                    fontSize: 10, fontWeight: 800, flexShrink: 0, fontFamily: 'system-ui',
                   }}>
                     {OPTION_LABELS[idx]}
                   </span>
-                  <span style={{ fontSize: 13, color, fontFamily: 'system-ui', lineHeight: 1.5 }}>
+                  <span style={{ fontSize: 13, color, fontFamily: 'system-ui', lineHeight: 1.5, flex: 1 }}>
                     {opt}
-                    {isCorrect  && <span style={{ fontSize: 10, marginLeft: 6, fontWeight: 700 }}>✓ Correct</span>}
-                    {isSelected && !isCorrect && <span style={{ fontSize: 10, marginLeft: 6, fontWeight: 700 }}>✗ Your answer</span>}
+                    {isOk && <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.7 }}>Correct</span>}
+                    {isSel && !isOk && <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.7 }}>Your answer</span>}
                   </span>
                 </div>
               )
             })}
           </div>
 
-          {q.skipped && (
-            <p style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui', margin: '10px 0 0' }}>
-              This question was skipped.
-            </p>
-          )}
-
           {q.explanation && (
             <div style={{
               marginTop: 12, padding: '12px 14px',
-              background: '#f0f9ff', borderRadius: 10,
-              border: '1px solid #bae6fd',
+              background: 'rgba(59,158,255,0.06)',
+              borderRadius: 10, border: '1px solid rgba(59,158,255,0.15)',
             }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', margin: '0 0 4px', fontFamily: 'system-ui' }}>
-                EXPLANATION
+              <p style={{
+                fontSize: 10, fontWeight: 700,
+                color: 'rgba(59,158,255,0.6)',
+                margin: '0 0 5px', fontFamily: 'system-ui',
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+              }}>
+                Explanation
               </p>
-              <p style={{ fontSize: 13, color: '#0c4a6e', margin: 0, fontFamily: 'system-ui', lineHeight: 1.6 }}>
+              <p style={{
+                fontSize: 13, color: 'rgba(255,255,255,0.65)',
+                margin: 0, fontFamily: 'system-ui', lineHeight: 1.6,
+              }}>
                 {q.explanation}
               </p>
             </div>
@@ -316,132 +380,116 @@ function QuestionCard({ q }: { q: QuestionResult }) {
   )
 }
 
-type Filter = 'all' | 'correct' | 'wrong' | 'skipped'
-
 // ─── Inner Page ────────────────────────────────────────────────────────────────
 
 function ResultsInner() {
-  const router      = useRouter()
+  const router       = useRouter()
   const searchParams = useSearchParams()
-  const session_id  = searchParams.get('session_id')
+  const session_id   = searchParams.get('session_id')
+  const { user }     = useUser()
 
-  const [data, setData]           = useState<ResultsData | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState('')
-  const [filter, setFilter]       = useState<Filter>('all')
+  const [data, setData]       = useState<ResultsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState('')
+  const [filter, setFilter]   = useState<Filter>('all')
   const [activeTab, setActiveTab] = useState<'summary' | 'review'>('summary')
 
-  const [aiReview, setAiReview]         = useState<AIReview | null>(null)
-  const [aiLoading, setAiLoading]       = useState(false)
-  const [aiError, setAiError]           = useState('')
+  const [aiReview, setAiReview]   = useState<AIReview | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError]     = useState('')
 
   // ── 1. Fetch results ───────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!session_id) { setError('No session ID provided'); setLoading(false); return }
-
-    const fetchResults = async () => {
-      try {
-        const res  = await fetch(`/api/practice/results?session_id=${session_id}`)
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? 'Failed to load results')
-        setData(json)
-      } catch (err: any) {
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchResults()
+    if (!session_id) { setError('No session ID'); setLoading(false); return }
+    fetch(`/api/practice/results?session_id=${session_id}`)
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!ok) throw new Error(j.error ?? 'Failed to load')
+        setData(j)
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
   }, [session_id])
 
-  // ── 2. Call post-test AI once results are loaded ───────────────────────────
+  // ── 2. AI review — fires once data + user are ready ───────────────────────
 
   useEffect(() => {
-    if (!data || aiReview || aiLoading) return
+    if (!data || !user || aiReview || aiLoading) return
 
-    const fetchAIReview = async () => {
-      setAiLoading(true)
-      setAiError('')
-      try {
-        const res = await fetch('/api/ai/post-test', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id:         null, // will be resolved from auth() server-side
-            session_id:      data.session_id,
-            score:           data.score,
-            total_questions: data.total,
-            by_subject:      data.by_subject,
-            results:         data.results.map(r => ({
-              subject:    r.subject,
-              topic:      r.topic,
-              is_correct: r.is_correct,
-              skipped:    r.skipped,
-            })),
-          }),
-        })
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error ?? 'AI review failed')
-        setAiReview(json)
-      } catch (err: any) {
-        setAiError(err.message)
-      } finally {
-        setAiLoading(false)
-      }
-    }
+    setAiLoading(true)
+    setAiError('')
 
-    fetchAIReview()
-  }, [data])
+    fetch('/api/ai/post-test', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id:         user.id,
+        session_id:      data.session_id,
+        score:           data.score,
+        total_questions: data.total,
+        by_subject:      data.by_subject,
+        results: data.results.map(r => ({
+          subject:    r.subject,
+          topic:      r.topic,
+          is_correct: r.is_correct,
+          skipped:    r.skipped,
+        })),
+      }),
+    })
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!ok) throw new Error(j.error ?? 'AI failed')
+        setAiReview(j)
+      })
+      .catch(e => setAiError(e.message))
+      .finally(() => setAiLoading(false))
+  }, [data, user])
 
   // ── Loading ────────────────────────────────────────────────────────────────
 
-  if (loading) {
-    return (
+  if (loading) return (
+    <div style={{
+      minHeight: '100vh', background: '#080c14',
+      display: 'flex', alignItems: 'center',
+      justifyContent: 'center', flexDirection: 'column', gap: 16,
+    }}>
       <div style={{
-        minHeight: '100vh', background: '#faf9f7',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 16,
-      }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: '50%',
-          border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-        <p style={{ fontSize: 14, color: '#64748b', fontFamily: 'system-ui', margin: 0 }}>
-          Loading results…
-        </p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-      </div>
-    )
-  }
+        width: 36, height: 36, borderRadius: '50%',
+        border: '2px solid rgba(255,255,255,0.08)',
+        borderTopColor: '#3b9eff',
+        animation: 'spin 0.7s linear infinite',
+      }} />
+      <p style={{ fontFamily: 'system-ui', fontSize: 13, color: 'rgba(255,255,255,0.3)', margin: 0 }}>
+        Loading results…
+      </p>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
 
-  if (error || !data) {
-    return (
-      <div style={{
-        minHeight: '100vh', background: '#faf9f7',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24,
-      }}>
-        <p style={{ fontSize: 14, color: '#dc2626', textAlign: 'center', fontFamily: 'system-ui', margin: 0 }}>
-          {error || 'Results not found'}
-        </p>
-        <button
-          onClick={() => router.push('/dashboard')}
-          style={{
-            padding: '10px 24px', background: '#1d4ed8', color: '#fff',
-            border: 'none', borderRadius: 10, fontSize: 14,
-            fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui',
-          }}
-        >
-          Back to Dashboard
-        </button>
-      </div>
-    )
-  }
+  if (error || !data) return (
+    <div style={{
+      minHeight: '100vh', background: '#080c14',
+      display: 'flex', alignItems: 'center',
+      justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 24,
+    }}>
+      <p style={{ fontFamily: 'system-ui', fontSize: 14, color: '#ff4f6b', textAlign: 'center', margin: 0 }}>
+        {error || 'Results not found'}
+      </p>
+      <button
+        onClick={() => router.push('/dashboard')}
+        style={{
+          padding: '10px 24px', background: '#1d4ed8', color: '#fff',
+          border: 'none', borderRadius: 10, fontSize: 14,
+          fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui',
+        }}
+      >
+        Back to Dashboard
+      </button>
+    </div>
+  )
 
-  const { grade, color, bg } = getGrade(data.percentage)
+  const { accent, dim, grade } = getGrade(data.percentage)
 
   const correctCount = data.results.filter(q => q.is_correct).length
   const wrongCount   = data.results.filter(q => !q.is_correct && !q.skipped).length
@@ -457,41 +505,61 @@ function ResultsInner() {
   return (
     <>
       <style>{`
-        * { box-sizing: border-box; }
-        @keyframes spin    { to { transform: rotate(360deg) } }
-        @keyframes fadeIn  { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
-        @keyframes pulse   { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&display=swap');
+        *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+        @keyframes spin     {to{transform:rotate(360deg)}}
+        @keyframes fadeIn   {from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeDown {from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes shimmer  {0%,100%{opacity:0.3}50%{opacity:0.7}}
+        @keyframes popIn    {0%{transform:scale(0.92);opacity:0}100%{transform:scale(1);opacity:1}}
       `}</style>
 
-      <div style={{ minHeight: '100vh', background: '#faf9f7', paddingBottom: 40 }}>
+      <div style={{
+        minHeight: '100vh',
+        background: '#080c14',
+        paddingBottom: 48,
+      }}>
 
-        {/* ── Sticky header ── */}
+        {/* ── Header ── */}
         <div style={{
-          background: '#0f172a', padding: '16px 16px 0',
+          background: 'rgba(8,12,20,0.95)',
+          backdropFilter: 'blur(12px)',
+          padding: '14px 16px 0',
           position: 'sticky', top: 0, zIndex: 100,
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <button
               onClick={() => router.push('/dashboard')}
               style={{
-                background: 'rgba(255,255,255,0.1)', border: 'none',
-                borderRadius: 10, padding: '8px 14px',
-                color: '#ffffff', fontSize: 13, fontWeight: 600,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10, padding: '7px 14px',
+                color: 'rgba(255,255,255,0.6)',
+                fontSize: 13, fontWeight: 600,
                 cursor: 'pointer', fontFamily: 'system-ui',
               }}
             >
-              ← Dashboard
+              ← Back
             </button>
             <div style={{ flex: 1 }}>
-              <h1 style={{ fontSize: 16, fontWeight: 700, color: '#ffffff', margin: 0, fontFamily: 'Georgia, serif' }}>
-                Exam Results
+              <h1 style={{
+                fontFamily: "'Playfair Display', Georgia, serif",
+                fontSize: 17, fontWeight: 900,
+                color: '#fff', margin: 0, lineHeight: 1.2,
+              }}>
+                Results
               </h1>
-              <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, fontFamily: 'system-ui' }}>
+              <p style={{
+                fontFamily: 'system-ui', fontSize: 11,
+                color: 'rgba(255,255,255,0.3)', margin: 0,
+              }}>
                 {data.exam_type}
               </p>
             </div>
           </div>
 
+          {/* Tabs */}
           <div style={{ display: 'flex' }}>
             {(['summary', 'review'] as const).map(tab => (
               <button
@@ -500,14 +568,14 @@ function ResultsInner() {
                 style={{
                   flex: 1, padding: '10px 0',
                   background: 'none', border: 'none',
-                  borderBottom: `2px solid ${activeTab === tab ? '#3b82f6' : 'transparent'}`,
-                  color: activeTab === tab ? '#ffffff' : '#64748b',
-                  fontSize: 13, fontWeight: 600,
+                  borderBottom: `2px solid ${activeTab === tab ? accent : 'transparent'}`,
+                  color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.3)',
+                   fontSize: 13, fontWeight: 600,
                   cursor: 'pointer', fontFamily: 'system-ui',
-                  textTransform: 'capitalize', transition: 'all 0.15s',
+                  transition: 'all 0.15s',
                 }}
               >
-                {tab === 'summary' ? 'Summary' : 'Review Questions'}
+                {tab === 'summary' ? 'Summary' : 'Questions'}
               </button>
             ))}
           </div>
@@ -515,76 +583,138 @@ function ResultsInner() {
 
         {/* ── Summary Tab ── */}
         {activeTab === 'summary' && (
-          <div style={{ padding: '20px 16px', animation: 'fadeIn 0.3s ease' }}>
+          <div style={{ padding: '24px 16px', animation: 'fadeIn 0.35s ease' }}>
 
-            {/* Score card */}
+            {/* Hero score card */}
             <div style={{
-              background: bg, border: `1.5px solid ${color}30`,
-              borderRadius: 20, padding: '24px 20px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              gap: 12, marginBottom: 16,
+              background: `radial-gradient(circle at 30% 40%, ${accent}12 0%, transparent 60%), rgba(255,255,255,0.02)`,
+              border: `1px solid ${accent}25`,
+              borderRadius: 24, padding: '28px 20px',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: 16, marginBottom: 16,
+              animation: 'popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)',
             }}>
-              <ScoreRing percentage={data.percentage} grade={grade} color={color} />
+              <ScoreArc percentage={data.percentage} accent={accent} />
+
               <div style={{ textAlign: 'center' }}>
-                <p style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: '0 0 4px', fontFamily: 'Georgia, serif' }}>
-                  {getScoreMessage(data.percentage)}
+                <p style={{
+                  fontFamily: "'Playfair Display', Georgia, serif",
+                  fontSize: 22, fontWeight: 900,
+                  color: '#fff', margin: '0 0 6px',
+                }}>
+                  {getVerdict(data.percentage)}
                 </p>
-                <p style={{ fontSize: 13, color: '#64748b', margin: 0, fontFamily: 'system-ui' }}>
+                <p style={{
+                  fontFamily: 'system-ui', fontSize: 13,
+                  color: 'rgba(255,255,255,0.4)', margin: 0,
+                }}>
                   {data.score} of {data.total} correct
-                  {data.time_taken_seconds != null && ` · ${formatTime(data.time_taken_seconds)}`}
+                  {data.time_taken_seconds != null && (
+                    <span> · {formatTime(data.time_taken_seconds)}</span>
+                  )}
                 </p>
+              </div>
+
+              {/* Grade pill */}
+              <div style={{
+                display: 'inline-flex', alignItems: 'center',
+                gap: 6, background: dim,
+                border: `1px solid ${accent}40`,
+                borderRadius: 100, padding: '6px 18px',
+              }}>
+                <span style={{
+                  fontFamily: 'system-ui', fontSize: 11,
+                  fontWeight: 700, color: accent,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                }}>
+                  Grade {grade}
+                </span>
               </div>
             </div>
 
             {/* Stats row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+              gap: 10, marginBottom: 16,
+            }}>
               {[
-                { label: 'Correct',  value: correctCount,  color: '#16a34a', bg: '#f0fdf4' },
-                { label: 'Wrong',    value: wrongCount,    color: '#dc2626', bg: '#fef2f2' },
-                { label: 'Skipped', value: skippedCount,  color: '#94a3b8', bg: '#f8fafc' },
-              ].map(({ label, value, color, bg }) => (
+                { label: 'Correct',  value: correctCount,  color: '#00e5a0' },
+                { label: 'Wrong',    value: wrongCount,    color: '#ff4f6b' },
+                { label: 'Skipped',  value: skippedCount,  color: 'rgba(255,255,255,0.3)' },
+              ].map(({ label, value, color }) => (
                 <div key={label} style={{
-                  textAlign: 'center', background: bg,
-                  borderRadius: 14, padding: '14px 8px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 16, padding: '16px 8px',
+                  textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: 26, fontWeight: 900, color, fontFamily: 'Georgia, serif' }}>{value}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui', marginTop: 2 }}>{label}</div>
+                  <div style={{
+                    fontFamily: "'Playfair Display', Georgia, serif",
+                    fontSize: 28, fontWeight: 900, color, lineHeight: 1,
+                  }}>
+                    {value}
+                  </div>
+                  <div style={{
+                    fontFamily: 'system-ui', fontSize: 10,
+                    color: 'rgba(255,255,255,0.3)', marginTop: 4,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}>
+                    {label}
+                  </div>
                 </div>
               ))}
             </div>
 
-            {/* AI Review — always shown, skeleton while loading */}
+            {/* AI Review */}
             <AIReviewCard review={aiReview} loading={aiLoading} />
-            {aiError && !aiLoading && (
-              <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', fontFamily: 'system-ui', margin: '0 0 16px' }}>
-                AI review unavailable
-              </p>
-            )}
 
             {/* Subject breakdown */}
             {data.by_subject.length > 0 && (
-              <div style={{ background: '#ffffff', borderRadius: 16, padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: 16 }}>
-                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 14px', fontFamily: 'system-ui' }}>
-                  BY SUBJECT
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 20, padding: '18px 16px',
+                marginBottom: 16,
+              }}>
+                <p style={{
+                  fontFamily: 'system-ui', fontSize: 10,
+                  fontWeight: 700, color: 'rgba(255,255,255,0.3)',
+                  letterSpacing: '0.1em', textTransform: 'uppercase',
+                  margin: '0 0 16px',
+                }}>
+                  By Subject
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   {data.by_subject.map(s => {
-                    const { color: sc } = getGrade(s.percentage)
+                    const { accent: sa } = getGrade(s.percentage)
                     return (
                       <div key={s.subject}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                          <span style={{ fontSize: 13, color: '#334155', fontFamily: 'system-ui', fontWeight: 500 }}>
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'center', marginBottom: 6,
+                        }}>
+                          <span style={{
+                            fontFamily: 'system-ui', fontSize: 13,
+                            color: 'rgba(255,255,255,0.7)', fontWeight: 500,
+                          }}>
                             {s.subject}
                           </span>
-                          <span style={{ fontSize: 12, color: sc, fontFamily: 'system-ui', fontWeight: 700 }}>
+                          <span style={{
+                            fontFamily: 'system-ui', fontSize: 12,
+                            color: sa, fontWeight: 700,
+                          }}>
                             {s.score}/{s.total} · {s.percentage}%
                           </span>
                         </div>
-                        <div style={{ height: 6, background: '#f1f5f9', borderRadius: 99 }}>
+                        <div style={{
+                          height: 5, background: 'rgba(255,255,255,0.06)',
+                          borderRadius: 99,
+                        }}>
                           <div style={{
-                            height: '100%', background: sc,
+                            height: '100%', background: sa,
                             borderRadius: 99, width: `${s.percentage}%`,
-                            transition: 'width 0.8s ease',
+                            transition: 'width 0.9s cubic-bezier(0.34,1.2,0.64,1)',
+                            boxShadow: `0 0 8px ${sa}80`,
                           }} />
                         </div>
                       </div>
@@ -599,9 +729,11 @@ function ResultsInner() {
               <button
                 onClick={() => setActiveTab('review')}
                 style={{
-                  padding: '14px', background: '#1d4ed8', color: '#ffffff',
-                  border: 'none', borderRadius: 14, fontSize: 14, fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'system-ui',
+                  padding: '15px', fontFamily: 'system-ui',
+                  fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  border: 'none', borderRadius: 14,
+                  background: accent, color: '#000',
+                  boxShadow: `0 4px 20px ${accent}40`,
                 }}
               >
                 Review Questions
@@ -609,9 +741,11 @@ function ResultsInner() {
               <button
                 onClick={() => router.push('/practice')}
                 style={{
-                  padding: '14px', background: '#f1f5f9', color: '#475569',
-                  border: 'none', borderRadius: 14, fontSize: 14, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'system-ui',
+                  padding: '15px', fontFamily: 'system-ui',
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 14, background: 'rgba(255,255,255,0.05)',
+                  color: 'rgba(255,255,255,0.6)',
                 }}
               >
                 Practice Again
@@ -625,23 +759,27 @@ function ResultsInner() {
           <div style={{ padding: '16px', animation: 'fadeIn 0.3s ease' }}>
 
             {/* Filter pills */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+            <div style={{
+              display: 'flex', gap: 8, marginBottom: 16,
+              overflowX: 'auto', paddingBottom: 4,
+            }}>
               {([
-                { key: 'all',     label: `All (${data.results.length})` },
-                { key: 'correct', label: `Correct (${correctCount})` },
-                { key: 'wrong',   label: `Wrong (${wrongCount})` },
-                { key: 'skipped', label: `Skipped (${skippedCount})` },
+                { key: 'all',     label: `All · ${data.results.length}` },
+                { key: 'correct', label: `✓ ${correctCount}` },
+                { key: 'wrong',   label: `✗ ${wrongCount}` },
+                { key: 'skipped', label: `— ${skippedCount}` },
               ] as { key: Filter; label: string }[]).map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => setFilter(key)}
                   style={{
-                    padding: '6px 14px', borderRadius: 20,
-                    border: `1.5px solid ${filter === key ? '#1d4ed8' : '#e2e8f0'}`,
-                    background: filter === key ? '#1d4ed8' : '#ffffff',
-                    color: filter === key ? '#ffffff' : '#64748b',
+                    padding: '7px 16px', borderRadius: 100,
+                    border: `1px solid ${filter === key ? accent : 'rgba(255,255,255,0.1)'}`,
+                    background: filter === key ? `${accent}18` : 'transparent',
+                    color: filter === key ? accent : 'rgba(255,255,255,0.4)',
                     fontSize: 12, fontWeight: 600,
-                    cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'system-ui',
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                    fontFamily: 'system-ui', transition: 'all 0.15s',
                   }}
                 >
                   {label}
@@ -650,8 +788,12 @@ function ResultsInner() {
             </div>
 
             {filteredResults.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 0', fontFamily: 'system-ui', fontSize: 14 }}>
-                No questions in this category
+              <div style={{
+                textAlign: 'center', padding: '48px 0',
+                fontFamily: 'system-ui', fontSize: 14,
+                color: 'rgba(255,255,255,0.2)',
+              }}>
+                No questions here
               </div>
             ) : (
               filteredResults.map(q => (
@@ -665,26 +807,29 @@ function ResultsInner() {
   )
 }
 
-// ─── Default Export ─────────────────────────────────────────────────────────────
+// ─── Export ────────────────────────────────────────────────────────────────────
 
 export default function ResultsPage() {
   return (
     <Suspense fallback={
       <div style={{
-        minHeight: '100vh', background: '#faf9f7',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: 16,
+        minHeight: '100vh', background: '#080c14',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'center', flexDirection: 'column', gap: 16,
       }}>
         <div style={{
-          width: 40, height: 40, borderRadius: '50%',
-          border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8',
-          animation: 'spin 0.8s linear infinite',
+          width: 36, height: 36, borderRadius: '50%',
+          border: '2px solid rgba(255,255,255,0.08)',
+          borderTopColor: '#3b9eff',
+          animation: 'spin 0.7s linear infinite',
         }} />
-        <p style={{ fontSize: 14, color: '#64748b', fontFamily: 'system-ui', margin: 0 }}>Loading…</p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        <p style={{ fontFamily: 'system-ui', fontSize: 13, color: 'rgba(255,255,255,0.3)', margin: 0 }}>
+          Loading…
+        </p>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     }>
       <ResultsInner />
     </Suspense>
   )
-                    }
+              }
