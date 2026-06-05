@@ -83,7 +83,7 @@ const Select = ({ value, onChange, options, placeholder }: {
   onChange: (val: string) => void
   options: { label: string; value: string }[]
   placeholder?: string
-}) => {
+}) => (  // ← change the { to (
   <div style={{ position: "relative" }}>
     <select
       value={value}
@@ -98,7 +98,7 @@ const Select = ({ value, onChange, options, placeholder }: {
       onBlur={e => e.target.style.borderColor = "#e2e8f0"}
     >
       {placeholder && <option value="">{placeholder}</option>}
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
     <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}>
       <ChevronIcon />
