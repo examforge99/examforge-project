@@ -456,9 +456,6 @@ function AccountSheet({ data, onSignOut, onSubscribe, onAICoach }: {
           fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
         }}>{initials}</div>
         <div>
-          <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
-        }}>{initials}</div>
-        <div>
           <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 20, color: '#0f172a', letterSpacing: '0.03em' }}>{fullName}</div>
           <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'system-ui' }}>
             {data?.user?.exam_type ?? 'JAMB'} · {isSubbed ? data?.subscription?.plan_name ?? 'Pro' : 'Free Plan'}
@@ -625,8 +622,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-
-      {/* ── CONTENT ── */}
+    {/* ── CONTENT ── */}
       <div style={{ padding: '0 16px 100px', marginTop: -36, position: 'relative', zIndex: 2 }}>
 
         {/* Stat cards */}
@@ -790,6 +786,7 @@ export default function DashboardPage() {
           </div>
         )}
 
+        
         {/* Weak topics */}
         {!loading && weakTopics.length > 0 && (
           <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 18, padding: '18px 20px', marginBottom: 16, opacity: visible ? 1 : 0, transition: 'opacity 0.45s ease 0.4s' }}>
@@ -911,4 +908,5 @@ export default function DashboardPage() {
       </BottomSheet>
     </div>
   )
-}
+                  }
+              
