@@ -70,8 +70,8 @@ const ImageIcon = () => (
   </svg>
 );
 
-// ── Field Label ────────────────────────────────────────────────────────────────
-const Label = ({ children, required }) => (
+// ── Field Label ──────────────────────────────────────────────────────────────
+const Label = ({ children, required }: { children: React.ReactNode; required?: boolean }) => (
   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#64748b", textTransform: "uppercase", marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>
     {children}{required && <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>}
   </div>
