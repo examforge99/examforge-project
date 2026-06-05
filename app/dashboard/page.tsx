@@ -1,921 +1,789 @@
 'use client'
 
-import React, { useEffect, useState, useRef, Suspense } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { PRICING, PLAN_KEYS, type PlanKey } from '@/lib/pricing'
+import { useUser } from '@clerk/nextjs'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
-interface DashboardData {
-  user: {
-    full_name: string
-    exam_type: string
-    target_score: number | null
-    subscription_status: string
-    days_on_platform: number
-  }
-  streak: {
-    current_streak_days: number
-    streak_active: boolean
-    last_study_date: string | null
-  }
-  accuracy_by_subject: Record<string, number>
-  weak_topics: Array<{ subject: string; topic: string; accuracy: number }>
-  neglected_subjects: string[]
-  recent_sessions: Array<{
-    session_id: string
-    score: number
-    total_questions: number
-    percentage: number
-    date: string
-  }>
-  milestones: {
-    total_questions_answered: number
-    overall_accuracy: number
-    first_70_percent_achieved: boolean
-    longest_streak: number
-  }
-  exam_info: {
-    exam_name: string
-    exam_date: string
-    days_until: number
-  } | null
-  subscription: {
-    plan_name: string | null
-    status: string | null
-    days_remaining: number | null
-  }
-  improvement_trend: 'improving' | 'declining' | 'stable' | null
-  best_subject: string | null
-  worst_subject: string | null
-  ai_summary: string | null
+interface SubjectBreakdown {
+  subject: string
+  score: number
+  total: number
+  percentage: number
 }
 
-interface NewsItem {
-  id: string
-  headline: string
-  body: string
-  created_at: string
+interface QuestionResult {
+  question_number: number
+  question_id: string
+  question_text: string | null
+  options: string[]
+  selected_index: number | null
+  correct_index: number | null
+  is_correct: boolean
+  skipped: boolean
+  explanation: string | null
+  subject: string | null
+  topic: string | null
+  subtopic: string | null
+  time_spent_seconds: number
 }
 
-type Sheet = 'none' | 'practice' | 'account' | 'subscribe'
+interface ResultsData {
+  session_id: string
+  exam_type: string
+  score: number
+  total: number
+  percentage: number
+  time_taken_seconds: number | null
+  by_subject: SubjectBreakdown[]
+  results: QuestionResult[]
+}
 
-// ─── Nav ──────────────────────────────────────────────────────────────────────
+interface AIReview {
+  narrative: string
+  next_topic: string | null
+  next_subject: string | null
+}
 
-const NAV = [
-  {
-    id: 'home', label: 'Home',
-    icon: (a: boolean) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill={a ? '#0f172a' : 'none'} stroke={a ? '#0f172a' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+type Filter = 'all' | 'correct' | 'wrong' | 'skipped'
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E']
+
+function formatTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return `${h}h ${m}m ${s}s`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
+function getGrade(pct: number) {
+  if (pct >= 80) return { grade: 'A', accent: '#16a34a', light: '#f0fdf4', border: '#bbf7d0', bar: '#16a34a' }
+  if (pct >= 70) return { grade: 'B', accent: '#1d4ed8', light: '#eff6ff', border: '#bfdbfe', bar: '#1d4ed8' }
+  if (pct >= 60) return { grade: 'C', accent: '#d97706', light: '#fffbeb', border: '#fde68a', bar: '#d97706' }
+  if (pct >= 50) return { grade: 'D', accent: '#ea580c', light: '#fff7ed', border: '#fed7aa', bar: '#ea580c' }
+  return              { grade: 'F', accent: '#dc2626', light: '#fef2f2', border: '#fecaca', bar: '#dc2626' }
+}
+
+function getVerdict(pct: number): string {
+  if (pct >= 80) return 'Outstanding!'
+  if (pct >= 70) return 'Well Done'
+  if (pct >= 60) return 'Keep Pushing'
+  if (pct >= 50) return 'Just Made It'
+  return 'Try Again'
+}
+
+// ─── Score Ring ────────────────────────────────────────────────────────────────
+
+function ScoreRing({ percentage, accent }: { percentage: number; accent: string }) {
+  const r = 52
+  const circ = 2 * Math.PI * r
+  const offset = circ - (percentage / 100) * circ
+
+  return (
+    <div style={{ position: 'relative', width: 130, height: 130 }}>
+      <svg width="130" height="130" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="65" cy="65" r={r} fill="none" stroke="#e2e8f0" strokeWidth="9" />
+        <circle
+          cx="65" cy="65" r={r} fill="none"
+          stroke={accent} strokeWidth="9"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 1s ease' }}
+        />
       </svg>
-    ),
-  },
-  {
-    id: 'practice', label: 'Practice',
-    icon: (a: boolean) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={a ? '#0f172a' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="5 3 19 12 5 21 5 3" />
-      </svg>
-    ),
-  },
-  {
-    id: 'ai', label: 'AI Coach',
-    icon: (a: boolean) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill={a ? '#0f172a' : 'none'} stroke={a ? '#0f172a' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-      </svg>
-    ),
-  },
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 1,
+      }}>
+        <span style={{
+          fontFamily: "'Bebas Neue', Georgia, serif",
+          fontSize: 34, fontWeight: 400, color: accent,
+          letterSpacing: '0.02em', lineHeight: 1,
+        }}>
+          {percentage}%
+        </span>
+        <span style={{
+          fontFamily: 'system-ui', fontSize: 10,
+          color: '#94a3b8', letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+        }}>
+          Score
+        </span>
+      </div>
+    </div>
+  )
+}
 
-  {
-    id: 'account', label: 'Account',
-    icon: (a: boolean) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={a ? '#0f172a' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-      </svg>
-    ),
-  },
-]
+// ─── AI Review Card ────────────────────────────────────────────────────────────
 
-// ─── Counter ──────────────────────────────────────────────────────────────────
+function AIReviewCard({ review, loading }: { review: AIReview | null; loading: boolean }) {
+  return (
+    <div style={{
+      background: '#0f172a',
+      borderRadius: 18, padding: '18px 20px',
+      marginBottom: 14,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <div style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: '#3b82f6',
+          boxShadow: '0 0 6px #3b82f6',
+        }} />
+        <span style={{
+          fontFamily: "'Bebas Neue', Georgia, serif",
+          fontSize: 13, letterSpacing: '0.1em',
+          color: '#64748b',
+        }}>
+          AI Coach Review
+        </span>
+      </div>
 
-function Counter({ to, duration = 1200 }: { to: number; duration?: number }) {
-  const [val, setVal] = useState(0)
-  const ref = useRef<NodeJS.Timeout | null>(null)
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {[95, 78, 85, 52].map((w, i) => (
+            <div key={i} style={{
+              height: 11, borderRadius: 6,
+              background: 'rgba(255,255,255,0.07)',
+              width: `${w}%`,
+              animation: 'shimmer 1.6s ease-in-out infinite',
+              animationDelay: `${i * 0.12}s`,
+            }} />
+          ))}
+        </div>
+      ) : review ? (
+        <>
+          <p style={{
+            fontFamily: 'system-ui',
+            fontSize: 14, lineHeight: 1.75,
+            color: 'rgba(255,255,255,0.8)',
+            margin: '0 0 16px',
+          }}>
+            {review.narrative}
+          </p>
+          {(review.next_subject || review.next_topic) && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              background: 'rgba(59,130,246,0.12)',
+              border: '1px solid rgba(59,130,246,0.25)',
+              borderRadius: 100, padding: '7px 14px',
+            }}>
+              <span style={{ fontSize: 12 }}>🎯</span>
+              <span style={{
+                fontFamily: 'system-ui', fontSize: 12,
+                fontWeight: 600, color: '#60a5fa',
+              }}>
+                {review.next_topic
+                  ? `${review.next_topic}${review.next_subject ? ` · ${review.next_subject}` : ''}`
+                  : review.next_subject}
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <p style={{
+          fontFamily: 'system-ui', fontSize: 13,
+          color: '#475569', margin: 0,
+        }}>
+          AI review unavailable
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Question Card ─────────────────────────────────────────────────────────────
+
+function QuestionCard({ q }: { q: QuestionResult }) {
+  const [open, setOpen] = useState(false)
+
+  const statusColor = q.skipped ? '#94a3b8' : q.is_correct ? '#16a34a' : '#dc2626'
+  const statusBg    = q.skipped ? '#f8fafc'  : q.is_correct ? '#f0fdf4' : '#fef2f2'
+  const statusBorder= q.skipped ? '#e2e8f0'  : q.is_correct ? '#bbf7d0' : '#fecaca'
+  const statusLabel = q.skipped ? '—' : q.is_correct ? '✓' : '✗'
+
+  return (
+    <div style={{
+      background: '#ffffff',
+      border: `1.5px solid ${statusBorder}`,
+      borderRadius: 16, overflow: 'hidden', marginBottom: 8,
+    }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', padding: '14px 16px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{
+          minWidth: 30, height: 30, borderRadius: 8,
+          background: statusBg,
+          border: `1.5px solid ${statusColor}30`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 12, fontWeight: 800, color: statusColor,
+          fontFamily: 'system-ui', flexShrink: 0,
+        }}>
+          {statusLabel}
+        </span>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{
+            fontFamily: 'system-ui', fontSize: 13,
+            color: '#0f172a', margin: 0, lineHeight: 1.45,
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          }}>
+            <span style={{ color: '#94a3b8', marginRight: 4 }}>{q.question_number}.</span>
+            {q.question_text ?? 'Question unavailable'}
+          </p>
+          {q.subject && (
+            <span style={{
+              fontSize: 10, color: '#94a3b8',
+              fontFamily: 'system-ui', marginTop: 3, display: 'block',
+              letterSpacing: '0.04em',
+            }}>
+              {q.subject}{q.topic ? ` · ${q.topic}` : ''}
+            </span>
+          )}
+        </div>
+
+        <span style={{
+          fontSize: 13, color: '#cbd5e1',
+          transform: open ? 'rotate(180deg)' : 'none',
+          transition: 'transform 0.2s',
+          flexShrink: 0,
+        }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          padding: '0 16px 16px',
+          borderTop: '1px solid #f1f5f9',
+          animation: 'fadeDown 0.2s ease',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {q.options.map((opt, idx) => {
+              const isSel = q.selected_index === idx
+              const isOk  = q.correct_index === idx
+              let bg = '#f8fafc', border = '#e2e8f0', color = '#334155'
+              if (isOk)           { bg = '#f0fdf4'; border = '#16a34a'; color = '#15803d' }
+              if (isSel && !isOk) { bg = '#fef2f2'; border = '#dc2626'; color = '#dc2626' }
+
+              return (
+                <div key={idx} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '10px 12px', borderRadius: 10,
+                  border: `1.5px solid ${border}`, background: bg,
+                }}>
+                  <span style={{
+                    minWidth: 22, height: 22, borderRadius: 6,
+                    background: isOk ? '#16a34a' : isSel ? '#dc2626' : '#e2e8f0',
+                    color: (isOk || isSel) ? '#fff' : '#64748b',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 800, flexShrink: 0, fontFamily: 'system-ui',
+                  }}>
+                    {OPTION_LABELS[idx]}
+                  </span>
+                  <span style={{ fontSize: 13, color, fontFamily: 'system-ui', lineHeight: 1.5, flex: 1 }}>
+                    {opt}
+                    {isOk && <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.6 }}>Correct</span>}
+                    {isSel && !isOk && <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.7 }}>Your answer</span>}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          {q.skipped && (
+            <p style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'system-ui', margin: '10px 0 0' }}>
+              This question was skipped.
+            </p>
+          )}
+
+          {q.explanation && (
+            <div style={{
+              marginTop: 12, padding: '12px 14px',
+              background: '#eff6ff', borderRadius: 10,
+              border: '1px solid #bfdbfe',
+            }}>
+              <p style={{
+                fontSize: 10, fontWeight: 700, color: '#1d4ed8',
+                margin: '0 0 5px', fontFamily: 'system-ui',
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+              }}>
+                Explanation
+              </p>
+              <p style={{
+                fontSize: 13, color: '#1e3a8a',
+                margin: 0, fontFamily: 'system-ui', lineHeight: 1.65,
+              }}>
+                {q.explanation}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Inner Page ────────────────────────────────────────────────────────────────
+
+function ResultsInner() {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const session_id   = searchParams.get('session_id')
+  const { user }     = useUser()
+
+  const [data, setData]       = useState<ResultsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState('')
+  const [filter, setFilter]   = useState<Filter>('all')
+  const [activeTab, setActiveTab] = useState<'summary' | 'review'>('summary')
+
+  const [aiReview, setAiReview]   = useState<AIReview | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError]     = useState('')
+
+  // ── Fetch results ──────────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (to === 0) return
-    const steps = 40
-    const inc = to / steps
-    let step = 0
-    ref.current = setInterval(() => {
-      step++
-      setVal(Math.min(Math.round(inc * step), to))
-      if (step >= steps) clearInterval(ref.current!)
-    }, duration / steps)
-    return () => clearInterval(ref.current!)
-  }, [to, duration])
-  return <>{val.toLocaleString()}</>
-}
+    if (!session_id) { setError('No session ID'); setLoading(false); return }
+    fetch(`/api/practice/results?session_id=${session_id}`)
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!ok) throw new Error(j.error ?? 'Failed to load')
+        setData(j)
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [session_id])
 
-// ─── Bottom Sheet wrapper ─────────────────────────────────────────────────────
+  // ── AI review — fires once data + user are ready ───────────────────────────
 
-function BottomSheet({ open, onClose, children, title }: {
-  open: boolean; onClose: () => void; children: React.ReactNode; title?: string
-}) {
+  useEffect(() => {
+    if (!data || !user || aiReview || aiLoading) return
+    setAiLoading(true)
+    setAiError('')
+
+    fetch('/api/ai/post-test', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id:         user.id,
+        session_id:      data.session_id,
+        score:           data.score,
+        total_questions: data.total,
+        by_subject:      data.by_subject,
+        results: data.results.map(r => ({
+          subject:    r.subject,
+          topic:      r.topic,
+          is_correct: r.is_correct,
+          skipped:    r.skipped,
+        })),
+      }),
+    })
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!ok) throw new Error(j.error ?? 'AI failed')
+        setAiReview(j)
+      })
+      .catch(e => setAiError(e.message))
+      .finally(() => setAiLoading(false))
+  }, [data, user])
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+
+  if (loading) return (
+    <div style={{
+      minHeight: '100vh', background: '#faf9f7',
+      display: 'flex', alignItems: 'center',
+      justifyContent: 'center', flexDirection: 'column', gap: 16,
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: '50%',
+        border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8',
+        animation: 'spin 0.8s linear infinite',
+      }} />
+      <p style={{ fontFamily: 'system-ui', fontSize: 13, color: '#94a3b8', margin: 0 }}>
+        Loading results…
+      </p>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+
+  if (error || !data) return (
+    <div style={{
+      minHeight: '100vh', background: '#faf9f7',
+      display: 'flex', alignItems: 'center',
+      justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 24,
+    }}>
+      <p style={{ fontFamily: 'system-ui', fontSize: 14, color: '#dc2626', textAlign: 'center', margin: 0 }}>
+        {error || 'Results not found'}
+      </p>
+      <button
+        onClick={() => router.push('/dashboard')}
+        style={{
+          padding: '10px 24px', background: '#0f172a', color: '#fff',
+          border: 'none', borderRadius: 10, fontSize: 14,
+          fontFamily: "'Bebas Neue', Georgia, serif",
+          letterSpacing: '0.08em', cursor: 'pointer',
+        }}
+      >
+        Back to Dashboard
+      </button>
+    </div>
+  )
+
+  const { accent, light, border, bar, grade } = getGrade(data.percentage)
+
+  const correctCount = data.results.filter(q => q.is_correct).length
+  const wrongCount   = data.results.filter(q => !q.is_correct && !q.skipped).length
+  const skippedCount = data.results.filter(q => q.skipped).length
+
+  const filteredResults = data.results.filter(q => {
+    if (filter === 'correct') return q.is_correct
+    if (filter === 'wrong')   return !q.is_correct && !q.skipped
+    if (filter === 'skipped') return q.skipped
+    return true
+  })
+
   return (
     <>
-      <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, zIndex: 200,
-        background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)',
-        opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none',
-        transition: 'opacity 0.3s ease',
-      }} />
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
-        background: '#ffffff', borderRadius: '24px 24px 0 0',
-        transform: open ? 'translateY(0)' : 'translateY(100%)',
-        transition: 'transform 0.35s cubic-bezier(0.32,0.72,0,1)',
-        maxHeight: '90vh', overflowY: 'auto',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 0' }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: '#e2e8f0' }} />
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+        *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+        @keyframes spin     {to{transform:rotate(360deg)}}
+        @keyframes fadeIn   {from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeDown {from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes shimmer  {0%,100%{opacity:0.35}50%{opacity:0.7}}
+        @keyframes popIn    {0%{transform:scale(0.94);opacity:0}100%{transform:scale(1);opacity:1}}
+        @keyframes slideUp  {from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
+
+      <div style={{ minHeight: '100vh', background: '#faf9f7', paddingBottom: 48 }}>
+
+        {/* ── Sticky Header ── */}
+        <div style={{
+          background: '#0f172a',
+          padding: '14px 16px 0',
+          position: 'sticky', top: 0, zIndex: 100,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <button
+              onClick={() => router.push('/dashboard')}
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 10, padding: '7px 14px',
+                color: 'rgba(255,255,255,0.7)',
+                fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'system-ui',
+              }}
+            >
+              ← Back
+            </button>
+            <div style={{ flex: 1 }}>
+              <h1 style={{
+                fontFamily: "'Bebas Neue', Georgia, serif",
+                fontSize: 20, letterSpacing: '0.06em',
+                color: '#ffffff', margin: 0, lineHeight: 1.1,
+              }}>
+                Results
+              </h1>
+              <p style={{
+                fontFamily: 'system-ui', fontSize: 11,
+                color: '#475569', margin: 0, letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+              }}>
+                {data.exam_type}
+              </p>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex' }}>
+            {(['summary', 'review'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  flex: 1, padding: '10px 0',
+                  background: 'none', border: 'none',
+                  borderBottom: `2px solid ${activeTab === tab ? accent : 'transparent'}`,
+                  color: activeTab === tab ? '#ffffff' : '#475569',
+                  fontFamily: "'Bebas Neue', Georgia, serif",
+                  fontSize: 14, letterSpacing: '0.08em',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >
+                {tab === 'summary' ? 'Summary' : 'Questions'}
+              </button>
+            ))}
+          </div>
         </div>
-        {title && (
-          <div style={{
-            padding: '16px 24px 0',
-            fontFamily: "'Bebas Neue', Georgia, serif",
-            fontSize: 22, letterSpacing: '0.04em', color: '#0f172a',
-          }}>{title}</div>
+
+        {/* ── Summary Tab ── */}
+        {activeTab === 'summary' && (
+          <div style={{ padding: '20px 16px', animation: 'fadeIn 0.3s ease' }}>
+
+            {/* Hero score card */}
+            <div style={{
+              background: '#ffffff',
+              border: `1.5px solid ${border}`,
+              borderRadius: 22, padding: '28px 20px',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: 14,
+              marginBottom: 14,
+              animation: 'popIn 0.4s cubic-bezier(0.34,1.4,0.64,1)',
+              boxShadow: '0 1px 3px rgba(15,23,42,0.06)',
+            }}>
+              <ScoreRing percentage={data.percentage} accent={accent} />
+
+              <div style={{ textAlign: 'center' }}>
+                <p style={{
+                  fontFamily: "'Bebas Neue', Georgia, serif",
+                  fontSize: 26, letterSpacing: '0.04em',
+                  color: '#0f172a', margin: '0 0 5px',
+                }}>
+                  {getVerdict(data.percentage)}
+                </p>
+                  <p style={{
+                  fontFamily: 'system-ui', fontSize: 13,
+                  color: '#64748b', margin: 0,
+                }}>
+                  {data.score} of {data.total} correct
+                  {data.time_taken_seconds != null && (
+                    <span> · {formatTime(data.time_taken_seconds)}</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Grade pill */}
+              <div style={{
+                display: 'inline-flex', alignItems: 'center',
+                background: light, border: `1.5px solid ${border}`,
+                borderRadius: 100, padding: '6px 20px',
+              }}>
+                <span style={{
+                  fontFamily: "'Bebas Neue', Georgia, serif",
+                  fontSize: 14, letterSpacing: '0.1em',
+                  color: accent,
+                }}>
+                  Grade {grade}
+                </span>
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+              gap: 10, marginBottom: 14,
+            }}>
+              {[
+                { label: 'Correct',  value: correctCount,  accent: '#16a34a', light: '#f0fdf4', border: '#bbf7d0' },
+                { label: 'Wrong',    value: wrongCount,    accent: '#dc2626', light: '#fef2f2', border: '#fecaca' },
+                { label: 'Skipped',  value: skippedCount,  accent: '#94a3b8', light: '#f8fafc', border: '#e2e8f0' },
+              ].map(({ label, value, accent: a, light: l, border: b }) => (
+                <div key={label} style={{
+                  background: '#ffffff',
+                  border: `1.5px solid ${b}`,
+                  borderRadius: 16, padding: '16px 8px',
+                  textAlign: 'center',
+                  boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
+                }}>
+                  <div style={{
+                    fontFamily: "'Bebas Neue', Georgia, serif",
+                    fontSize: 30, color: a, lineHeight: 1,
+                    letterSpacing: '0.02em',
+                  }}>
+                    {value}
+                  </div>
+                  <div style={{
+                    fontFamily: 'system-ui', fontSize: 10,
+                    color: '#94a3b8', marginTop: 4,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                  }}>
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* AI Review */}
+            <AIReviewCard review={aiReview} loading={aiLoading} />
+
+            {/* Subject breakdown */}
+            {data.by_subject.length > 0 && (
+              <div style={{
+                background: '#ffffff',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: 18, padding: '18px 16px',
+                marginBottom: 14,
+                boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
+              }}>
+                <p style={{
+                  fontFamily: "'Bebas Neue', Georgia, serif",
+                  fontSize: 13, letterSpacing: '0.1em',
+                  color: '#94a3b8', margin: '0 0 16px',
+                }}>
+                  By Subject
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {data.by_subject.map(s => {
+                    const { accent: sa, bar: sb } = getGrade(s.percentage)
+                    return (
+                      <div key={s.subject}>
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between',
+                          alignItems: 'center', marginBottom: 6,
+                        }}>
+                          <span style={{
+                            fontFamily: 'system-ui', fontSize: 13,
+                            color: '#0f172a', fontWeight: 600,
+                          }}>
+                            {s.subject}
+                          </span>
+                          <span style={{
+                            fontFamily: 'system-ui', fontSize: 12,
+                            color: sa, fontWeight: 700,
+                          }}>
+                            {s.score}/{s.total} · {s.percentage}%
+                          </span>
+                        </div>
+                        <div style={{
+                          height: 6, background: '#f1f5f9', borderRadius: 99,
+                        }}>
+                          <div style={{
+                            height: '100%', background: sb,
+                            borderRadius: 99, width: `${s.percentage}%`,
+                            transition: 'width 0.9s ease',
+                          }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={() => setActiveTab('review')}
+                style={{
+                  padding: '15px',
+                  fontFamily: "'Bebas Neue', Georgia, serif",
+                  fontSize: 16, letterSpacing: '0.1em',
+                  cursor: 'pointer', border: 'none', borderRadius: 14,
+                  background: '#0f172a', color: '#ffffff',
+                }}
+              >
+                Review Questions
+              </button>
+              <button
+                onClick={() => router.push('/practice')}
+                style={{
+                  padding: '15px',
+                  fontFamily: "'Bebas Neue', Georgia, serif",
+                  fontSize: 16, letterSpacing: '0.1em',
+                  cursor: 'pointer',
+                  border: '1.5px solid #e2e8f0',
+                  borderRadius: 14,
+                  background: '#ffffff', color: '#0f172a',
+                }}
+              >
+                Practice Again
+              </button>
+            </div>
+          </div>
         )}
-        <div style={{ padding: '16px 24px 32px' }}>{children}</div>
+
+        {/* ── Review Tab ── */}
+        {activeTab === 'review' && (
+          <div style={{ padding: '16px', animation: 'fadeIn 0.3s ease' }}>
+
+            {/* Filter pills */}
+            <div style={{
+              display: 'flex', gap: 8, marginBottom: 16,
+              overflowX: 'auto', paddingBottom: 4,
+            }}>
+              {([
+                { key: 'all',     label: `All · ${data.results.length}` },
+                { key: 'correct', label: `✓ ${correctCount}` },
+                { key: 'wrong',   label: `✗ ${wrongCount}` },
+                { key: 'skipped', label: `— ${skippedCount}` },
+              ] as { key: Filter; label: string }[]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  style={{
+                    padding: '7px 16px', borderRadius: 100,
+                    border: `1.5px solid ${filter === key ? '#0f172a' : '#e2e8f0'}`,
+                    background: filter === key ? '#0f172a' : '#ffffff',
+                    color: filter === key ? '#ffffff' : '#64748b',
+                    fontFamily: 'system-ui',
+                    fontSize: 12, fontWeight: 600,
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {filteredResults.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: '48px 0',
+                fontFamily: 'system-ui', fontSize: 14,
+                color: '#94a3b8',
+              }}>
+                No questions here
+              </div>
+            ) : (
+              filteredResults.map(q => (
+                <QuestionCard key={q.question_id} q={q} />
+              ))
+            )}
+          </div>
+        )}
       </div>
     </>
   )
 }
 
-// ─── Practice Sheet ───────────────────────────────────────────────────────────
+// ─── Export ────────────────────────────────────────────────────────────────────
 
-function PracticeSheet({ onSelect }: { onSelect: (mode: string) => void }) {
-  const modes = [
-    { id: 'cbt',           label: 'CBT SESSION',    desc: 'Full JAMB simulation · 2 hour timer · All subjects', tag: 'RECOMMENDED', color: '#0f172a', bg: '#f8fafc' },
-    { id: 'free_practice', label: 'FREE PRACTICE',  desc: 'Pick subject · Topic or year · Your pace',           tag: null,          color: '#1d4ed8', bg: '#eff6ff' },
-    { id: 'mock',          label: 'MOCK EXAM',      desc: '50 questions per subject · Custom timer',             tag: null,          color: '#7c3aed', bg: '#f5f3ff' },
-  ]
+export default function ResultsPage() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {modes.map((m, i) => (
-        <button key={m.id} onClick={() => onSelect(m.id)} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '18px 20px', background: m.bg,
-          border: `1.5px solid ${m.color}18`, borderRadius: 16,
-          cursor: 'pointer', textAlign: 'left',
-          animation: `slideUp 0.3s ease ${i * 0.07}s both`,
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 18, letterSpacing: '0.06em', color: m.color }}>{m.label}</span>
-              {m.tag && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', color: '#ffffff', background: '#0f172a', padding: '2px 7px', borderRadius: 4 }}>{m.tag}</span>}
-            </div>
-            <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'system-ui', lineHeight: 1.5 }}>{m.desc}</div>
-          </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={m.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ─── Subscribe Sheet — full API wiring from subscribe/page.tsx ────────────────
-
-function SubscribeSheet({ userId }: { userId: string }) {
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('3_months')
-  const [couponCode, setCouponCode]     = useState('')
-  const [couponApplied, setCouponApplied] = useState(false)
-  const [couponDiscount, setCouponDiscount] = useState(0)
-  const [couponError, setCouponError]   = useState('')
-  const [submitting, setSubmitting]     = useState(false)
-  const [pageError, setPageError]       = useState('')
-  const [alreadySub, setAlreadySub]     = useState(false)
-
-  const currentPrice = PRICING.plans[selectedPlan].price_naira
-  const finalPrice   = couponApplied ? Math.max(0, currentPrice - couponDiscount) : currentPrice
-
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) return
-    setCouponError('')
-    try {
-      const res  = await fetch('/api/coupons/validate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: couponCode.trim().toUpperCase(), plan: selectedPlan }),
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) { setCouponError(data.error ?? 'Invalid coupon.'); setCouponApplied(false); setCouponDiscount(0); return }
-      setCouponApplied(true)
-      setCouponDiscount(data.discount_naira ?? 0)
-    } catch { setCouponError('Could not validate coupon. Please try again.') }
-  }
-
-  const handleSubscribe = async () => {
-    if (!userId) return
-    setSubmitting(true)
-    setPageError('')
-    setAlreadySub(false)
-    try {
-      const res  = await fetch('/api/payments/initialize', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id:     userId,
-          plan_name:   selectedPlan,
-          coupon_code: couponApplied ? couponCode.trim().toUpperCase() : null,
-        }),
-      })
-      const data = await res.json()
-      if (data.already_subscribed) { setAlreadySub(true); setPageError(data.error); setSubmitting(false); return }
-      if (!res.ok || data.error)   { setPageError(data.error ?? 'Payment initialization failed.'); setSubmitting(false); return }
-      window.location.href = data.authorization_url
-    } catch { setPageError('Something went wrong. Please try again.'); setSubmitting(false) }
-  }
-
-  if (!PRICING.payments_enabled) {
-    return (
-      <div style={{ textAlign: 'center', padding: '20px 0' }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Payments Unavailable</div>
-        <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>Payments are temporarily unavailable. Please check back soon.</p>
-        {PRICING.support_whatsapp && (
-          <a href={`https://wa.me/${PRICING.support_whatsapp}`} target="_blank" rel="noopener noreferrer"
-            style={{ color: '#16a34a', fontWeight: 600, fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 12 }}>
-            Chat with us on WhatsApp
-          </a>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <p style={{ fontSize: 13, color: '#64748b', fontFamily: 'system-ui', marginBottom: 16, lineHeight: 1.6 }}>
-        Full CBT simulation, AI explanations, unlimited practice and performance analytics.
-      </p>
-
-      {/* Error */}
-      {pageError && (
-        <div style={{
-          background: alreadySub ? '#f0fdf4' : '#fef2f2',
-          border: `1px solid ${alreadySub ? '#bbf7d0' : '#fecaca'}`,
-          borderRadius: 10, padding: '12px 14px', marginBottom: 14,
-          fontSize: 13, color: alreadySub ? '#16a34a' : '#dc2626',
-          fontFamily: 'system-ui', lineHeight: 1.5,
-        }}>{pageError}</div>
-      )}
-
-      {/* Plan grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-        {PLAN_KEYS.map(key => {
-          const plan      = PRICING.plans[key]
-          const monthCount = parseInt(key)
-          const perMonth  = !isNaN(monthCount) && monthCount > 1 ? Math.round(plan.price_naira / monthCount) : null
-          const isSelected = selectedPlan === key
-          return (
-            <button
-              key={key}
-              onClick={() => { setSelectedPlan(key); setCouponApplied(false); setCouponDiscount(0); setCouponCode(''); setCouponError(''); setPageError(''); setAlreadySub(false) }}
-              disabled={!plan.enabled || submitting}
-              style={{
-                padding: '16px 14px', textAlign: 'left',
-                background: isSelected ? '#0f172a' : '#f8fafc',
-                border: `1.5px solid ${isSelected ? '#0f172a' : plan.popular ? '#1d4ed8' : '#e2e8f0'}`,
-                borderRadius: 14, cursor: plan.enabled ? 'pointer' : 'not-allowed',
-                opacity: plan.enabled ? 1 : 0.5,
-                position: 'relative', overflow: 'hidden',
-              }}
-            >
-              {plan.popular && (
-                <div style={{ position: 'absolute', top: 7, right: 7, fontSize: 8, fontWeight: 800, letterSpacing: '0.08em', color: '#ffffff', background: '#1d4ed8', padding: '2px 5px', borderRadius: 4 }}>
-                  POPULAR
-                </div>
-              )}
-              <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 13, letterSpacing: '0.04em', color: isSelected ? '#94a3b8' : '#64748b', marginBottom: 4 }}>
-                {plan.label}
-              </div>
-              <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: isSelected ? '#ffffff' : '#0f172a', lineHeight: 1 }}>
-                ₦{plan.price_naira.toLocaleString('en-NG')}
-              </div>
-              {perMonth && (
-                <div style={{ fontSize: 10, color: isSelected ? '#64748b' : '#94a3b8', fontFamily: 'system-ui', marginTop: 3 }}>
-                  ₦{perMonth.toLocaleString('en-NG')}/mo
-                </div>
-              )}
-              <div style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.5)' : '#94a3b8', fontFamily: 'system-ui', marginTop: 2 }}>
-                {plan.duration}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Coupon */}
-      {PRICING.coupons_enabled && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="text" placeholder="Coupon code"
-              value={couponCode}
-              onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCouponApplied(false); setCouponDiscount(0); setCouponError('') }}
-              style={{
-                flex: 1, padding: '10px 12px',
-                border: '1px solid rgba(15,23,42,0.12)', borderRadius: 8,
-                fontSize: 13, fontFamily: 'system-ui', color: '#0f172a',
-                outline: 'none', background: '#faf9f7', letterSpacing: '0.05em',
-              }}
-            />
-            <button
-              onClick={handleApplyCoupon}
-              disabled={!couponCode.trim() || submitting}
-              style={{
-                padding: '10px 16px', background: '#0f172a', color: '#ffffff',
-                border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                cursor: couponCode.trim() ? 'pointer' : 'not-allowed',
-                opacity: couponCode.trim() ? 1 : 0.5,
-                fontFamily: 'system-ui', whiteSpace: 'nowrap',
-              }}
-            >Apply</button>
-          </div>
-          {couponError && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 6 }}>{couponError}</div>}
-          {couponApplied && couponDiscount > 0 && (
-            <div style={{ fontSize: 11, color: '#16a34a', marginTop: 6, fontWeight: 600 }}>
-              ✓ ₦{couponDiscount.toLocaleString('en-NG')} discount applied
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Order summary */}
-      <div style={{ background: '#f8fafc', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b', marginBottom: 6, fontFamily: 'system-ui' }}>
-          <span>{PRICING.plans[selectedPlan].label} Plan</span>
-          <span>₦{currentPrice.toLocaleString('en-NG')}</span>
-        </div>
-        {couponApplied && couponDiscount > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#16a34a', marginBottom: 6, fontFamily: 'system-ui' }}>
-            <span>Coupon discount</span>
-            <span>- ₦{couponDiscount.toLocaleString('en-NG')}</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, color: '#0f172a', paddingTop: 8, borderTop: '1px solid #e2e8f0', fontFamily: "'Bebas Neue', Georgia, serif", letterSpacing: '0.03em' }}>
-          <span>TOTAL</span>
-          <span>₦{finalPrice.toLocaleString('en-NG')}</span>
-        </div>
-      </div>
-
-      {/* CTA */}
-      <button
-        onClick={handleSubscribe}
-        disabled={submitting || alreadySub}
-        style={{
-          width: '100%', padding: '16px',
-          background: alreadySub ? '#94a3b8' : '#0f172a',
-          border: 'none', borderRadius: 14,
-          fontSize: 14, fontWeight: 800,
-          color: '#ffffff', cursor: submitting || alreadySub ? 'not-allowed' : 'pointer',
-          fontFamily: "'Bebas Neue', Georgia, serif", letterSpacing: '0.1em',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        }}
-      >
-        {submitting ? (
-          <>
-            <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#ffffff', animation: 'spin 0.9s linear infinite' }} />
-            REDIRECTING...
-          </>
-        ) : alreadySub ? 'ALREADY SUBSCRIBED' : `PAY ₦${finalPrice.toLocaleString('en-NG')} SECURELY`}
-      </button>
-
-      <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: 10, fontFamily: 'system-ui' }}>
-        Secured by Paystack · Card details never stored
-      </p>
-
-      {PRICING.support_whatsapp && (
-        <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: '#64748b' }}>
-          Need help?{' '}
-          <a href={`https://wa.me/${PRICING.support_whatsapp}`} target="_blank" rel="noopener noreferrer"
-            style={{ color: '#16a34a', fontWeight: 600, textDecoration: 'none' }}>
-            Chat on WhatsApp
-          </a>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Account Sheet ────────────────────────────────────────────────────────────
-
-function AccountSheet({ data, onSignOut, onSubscribe, onAICoach }: {
-  data: DashboardData | null
-  onSignOut: () => void
-  onSubscribe: () => void
-  onAICoach: () => void
-}) {
-  const fullName = data?.user?.full_name ?? 'Student'
-  const initials = fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-  const isSubbed = data?.subscription?.status === 'active'
-
-  const links = [
-    { label: 'AI Coach',           icon: '✦', action: 'ai'        },
-    { label: 'Subscription',       icon: '◈', action: 'subscribe' },
-    { label: 'Practice History',   icon: '◷', action: 'history'   },
-    { label: 'News & Updates',     icon: '◉', action: 'news'      },
-    { label: 'Account Settings',   icon: '✎', action: 'settings'  },
-  ]
-
-  const router = useRouter()
-
-  const handleLink = (action: string) => {
-    if (action === 'subscribe') { onSubscribe(); return }
-    if (action === 'ai')        { onAICoach();   return }
-    if (action === 'history')   { router.push('/history');  return }
-    if (action === 'news')      { router.push('/news');     return }
-    if (action === 'settings')  { router.push('/account');  return }
-  }
-
-  return (
-    <div>
-      {/* Profile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 0 20px', borderBottom: '1px solid #f1f5f9', marginBottom: 16 }}>
-        <div style={{
-          width: 56, height: 56, borderRadius: '50%', background: '#0f172a',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.05em', flexShrink: 0,
-        }}>{initials}</div>
-        <div>
-          <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 20, color: '#0f172a', letterSpacing: '0.03em' }}>{fullName}</div>
-          <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'system-ui' }}>
-            {data?.user?.exam_type ?? 'JAMB'} · {isSubbed ? data?.subscription?.plan_name ?? 'Pro' : 'Free Plan'}
-            {isSubbed && data?.subscription?.days_remaining != null && (
-              <span style={{ color: '#94a3b8' }}> · {data.subscription.days_remaining}d left</span>
-            )}
-          </div>
-        </div>
-        <div style={{ marginLeft: 'auto', width: 10, height: 10, borderRadius: '50%', background: isSubbed ? '#16a34a' : '#94a3b8' }} />
-      </div>
-
-      {/* Links */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 16 }}>
-        {links.map(l => (
-          <button key={l.label} onClick={() => handleLink(l.action)} style={{
-            display: 'flex', alignItems: 'center', gap: 14,
-            padding: '14px 4px', background: 'none', border: 'none',
-            borderBottom: '1px solid #f8fafc', cursor: 'pointer', textAlign: 'left',
-          }}>
-            <span style={{ fontSize: 16, color: '#94a3b8', width: 20, textAlign: 'center' }}>{l.icon}</span>
-            <span style={{ fontSize: 14, color: '#0f172a', fontFamily: 'system-ui', fontWeight: 500 }}>{l.label}</span>
-            <svg style={{ marginLeft: 'auto' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-          </button>
-        ))}
-      </div>
-
-      <button onClick={onSignOut} style={{
-        width: '100%', padding: '14px', background: '#fef2f2',
-        border: '1px solid #fecaca', borderRadius: 12,
-        fontSize: 13, fontWeight: 700, color: '#dc2626',
-        cursor: 'pointer', fontFamily: 'system-ui', letterSpacing: '0.04em',
-      }}>SIGN OUT</button>
-    </div>
-  )
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-function DashboardContent() {
-  const { userId, signOut } = useAuth()
-  const router = useRouter()
-  const searchParams = useSearchParams()
-
-  const [data, setData]           = useState<DashboardData | null>(null)
-  const [news, setNews]           = useState<NewsItem[]>([])
-  const [aiMessage, setAiMessage] = useState<string | null>(null)
-  const [loading, setLoading]     = useState(true)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [sheet, setSheet]         = useState<Sheet>('none')
-  const [activeTab, setActiveTab] = useState('home')
-  const [visible, setVisible]     = useState(false)
-
-  useEffect(() => {
-    if (!userId) return
-    const load = async () => {
-      try {
-        const [ctx, n] = await Promise.all([
-          fetch(`/api/student/context?user_id=${userId}`),
-          fetch('/api/news'),
-        ])
-        if (ctx.ok) setData(await ctx.json())
-        if (n.ok)   setNews((await n.json()).news ?? [])
-      } catch {}
-      finally { setLoading(false); setTimeout(() => setVisible(true), 60) }
-    }
-    load()
-  }, [userId])
-
-  useEffect(() => {
-    if (!userId) return
-    const fetchWelcome = async () => {
-      setAiLoading(true)
-      try {
-        const res = await fetch('/api/ai/welcome', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId }),
-        })
-        if (res.ok) {
-          const d = await res.json()
-          if (!d.skipped && d.message) setAiMessage(d.message)
-        }
-      } catch {}
-      finally { setAiLoading(false) }
-    }
-    fetchWelcome()
-  }, [userId])
-
-  // ── Handle payment redirect ────────────────────────────────────────────────
-  useEffect(() => {
-    if (searchParams.get('payment') === 'failed') {
-      setSheet('subscribe')
-      router.replace('/dashboard')
-    }
-  }, [searchParams])
-
-  const handleSignOut = async () => { await signOut(); router.push('/login') }
-  const handlePracticeSelect = (mode: string) => { setSheet('none'); setTimeout(() => router.push(`/practice?mode=${mode}`), 300) }
-  const handleAICoach = () => { setSheet('none'); setTimeout(() => router.push('/dashboard/ai-coach'), 300) }
-
-  const firstName  = data?.user?.full_name?.split(' ')[0] ?? 'Student'
-  const questions  = data?.milestones?.total_questions_answered ?? 0
-  const accuracy   = data?.milestones?.overall_accuracy ?? 0
-  const streak     = data?.streak?.current_streak_days ?? 0
-  const subjects   = Object.entries(data?.accuracy_by_subject ?? {})
-  const sessions   = data?.recent_sessions?.slice(0, 3) ?? []
-  const weakTopics = data?.weak_topics?.slice(0, 2) ?? []
-  const isNew      = !loading && questions === 0
-  const hour       = new Date().getHours()
-  const greeting   = hour < 12 ? 'MORNING' : hour < 17 ? 'AFTERNOON' : 'EVENING'
-  const isSubbed   = data?.subscription?.status === 'active'
-
-  return (
-    <div style={{ minHeight: '100vh', background: '#faf9f7', fontFamily: 'system-ui, sans-serif', overflowX: 'hidden' }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-        @keyframes slideUp   { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes countIn   { from { opacity: 0; transform: translateY(8px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes shimmer   { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-        @keyframes pulse     { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes spin      { to { transform: rotate(360deg); } }
-        .skel { background: linear-gradient(90deg, #f1f5f9 25%, #e8ecf1 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; border-radius: 6px; }
-        .stat-card:active  { transform: scale(0.97); }
-        .practice-btn:active { transform: scale(0.97); opacity: 0.9; }
-        ::-webkit-scrollbar { display: none; }
-      `}</style>
-
-      {/* ── HEADER ── */}
-      <div style={{ background: '#0f172a', position: 'relative', overflow: 'hidden', padding: '0 0 52px' }}>
-        <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.12 }} xmlns="http://www.w3.org/2000/svg">
-          <defs><pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="white" strokeWidth="0.5"/></pattern></defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
-          <line x1="60%" y1="0" x2="110%" y2="100%" stroke="white" strokeWidth="0.4" opacity="0.3" />
-          <line x1="30%" y1="0" x2="80%" y2="100%" stroke="white" strokeWidth="0.3" opacity="0.15" />
-        </svg>
-        <div style={{ position: 'absolute', top: -60, right: -40, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(29,78,216,0.35) 0%, transparent 70%)', pointerEvents: 'none' }} />
-
-        {/* Top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', position: 'relative', zIndex: 2 }}>
-          <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.12em', opacity: visible ? 1 : 0, transition: 'opacity 0.4s ease' }}>
-            EXAMFORGE
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {streak > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(217,119,6,0.2)', border: '1px solid rgba(217,119,6,0.4)', borderRadius: 99, padding: '4px 10px', animation: 'fadeIn 0.5s ease 0.3s both' }}>
-                <span style={{ fontSize: 12 }}>🔥</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', fontFamily: 'system-ui' }}>{streak}d</span>
-              </div>
-            )}
-            {/* AI Coach quick access */}
-            <button onClick={handleAICoach} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(29,78,216,0.2)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#60a5fa' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" /></svg>
-            </button>
-            <button onClick={() => setSheet('account')} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ffffff' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Greeting */}
-        <div style={{ padding: '4px 20px 0', position: 'relative', zIndex: 2, opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(10px)', transition: 'all 0.5s ease 0.1s' }}>
-          {!loading && data?.user?.exam_type && (
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.15em', color: '#60a5fa', marginBottom: 6, fontFamily: 'system-ui' }}>
-              · {data.user.exam_type} PREPARATION
-            </div>
-          )}
-          <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 'clamp(28px, 7vw, 38px)', color: '#ffffff', letterSpacing: '0.03em', lineHeight: 1.05, marginBottom: 6 }}>
-            {loading ? `GOOD ${greeting}` : `GOOD ${greeting},`}
-            {!loading && <span style={{ color: '#60a5fa', display: 'block' }}>{firstName.toUpperCase()}</span>}
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'system-ui' }}>
-            {isNew ? 'Start your first session below' : `${questions.toLocaleString()} questions · ${accuracy}% accuracy`}
-          </div>
-        </div>
-      </div>
-
-      {/* ── CONTENT ── */}
-      <div style={{ padding: '0 16px 100px', marginTop: -36, position: 'relative', zIndex: 2 }}>
-
-        {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
-          {[
-            { label: 'QUESTIONS', value: questions, suffix: '',  color: '#1d4ed8', delay: '0s'    },
-            { label: 'ACCURACY',  value: accuracy,  suffix: '%', color: '#059669', delay: '0.08s' },
-            { label: 'STREAK',    value: streak,    suffix: 'd', color: '#d97706', delay: '0.16s' },
-          ].map(({ label, value, suffix, color, delay }) => (
-            <div key={label} className="stat-card" style={{
-              background: '#ffffff', border: '1.5px solid rgba(15,23,42,0.08)',
-              borderRadius: 16, padding: '16px 12px', textAlign: 'center',
-              boxShadow: '0 4px 20px rgba(15,23,42,0.07)',
-              opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(12px)',
-              transition: `all 0.45s ease ${delay}`, position: 'relative', overflow: 'hidden',
-            }}>
-              <div style={{ position: 'absolute', top: 0, right: 0, width: 24, height: 24, borderLeft: `1px solid ${color}20`, borderBottom: `1px solid ${color}20` }} />
-              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: '#94a3b8', marginBottom: 8, fontFamily: 'system-ui' }}>{label}</div>
-              {loading
-                ? <div className="skel" style={{ height: 28, width: '60%', margin: '0 auto' }} />
-                : <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 32, color, letterSpacing: '-0.01em', lineHeight: 1, animation: `countIn 0.5s ease ${delay} both` }}>
-                    {suffix === '%' || suffix === 'd' ? `${value}${suffix}` : <Counter to={value} />}
-                  </div>
-              }
-            </div>
-          ))}
-        </div>
-
-        {/* Exam countdown */}
-        {!loading && data?.exam_info && (
-          <div style={{
-            background: '#0f172a', borderRadius: 20, padding: '20px', marginBottom: 16,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            position: 'relative', overflow: 'hidden',
-            opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(10px)',
-            transition: 'all 0.45s ease 0.2s',
-          }}>
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.08 }} xmlns="http://www.w3.org/2000/svg">
-              <defs><pattern id="cgrid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="white" strokeWidth="0.5"/></pattern></defs>
-              <rect width="100%" height="100%" fill="url(#cgrid)" />
-            </svg>
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', color: '#475569', marginBottom: 6 }}>{data.exam_info.exam_name.toUpperCase()}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 52, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>{data.exam_info.days_until}</span>
-                <span style={{ fontSize: 12, color: '#475569', fontFamily: 'system-ui' }}>DAYS LEFT</span>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', position: 'relative', zIndex: 1 }}>
-              <div style={{ fontSize: 10, color: '#475569', marginBottom: 4 }}>EXAM DATE</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', fontFamily: 'system-ui' }}>
-                {new Date(data.exam_info.exam_date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </div>
-              {data.user.target_score && <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, fontFamily: 'system-ui', fontWeight: 600 }}>TARGET · {data.user.target_score}</div>}
-            </div>
-          </div>
-        )}
-
-        {/* Start Practice */}
-        <button className="practice-btn" onClick={() => setSheet('practice')} style={{
-          width: '100%', background: '#0f172a', border: 'none', borderRadius: 18,
-          padding: 0, cursor: 'pointer', marginBottom: 16, overflow: 'hidden',
-          opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(10px)',
-          transition: 'all 0.45s ease 0.25s', position: 'relative',
-        }}>
-          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.1 }} xmlns="http://www.w3.org/2000/svg">
-            <defs><pattern id="pgrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="white" strokeWidth="0.5"/></pattern></defs>
-            <rect width="100%" height="100%" fill="url(#pgrid)" />
-          </svg>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 24px', position: 'relative', zIndex: 1 }}>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 26, color: '#ffffff', letterSpacing: '0.05em', lineHeight: 1 }}>START PRACTICE</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 4, fontFamily: 'system-ui' }}>CBT · Free Practice · Mock Exam</div>
-            </div>
-            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-            </div>
-          </div>
-        </button>
-
-        {/* AI Coach card */}
-        <button className="practice-btn" onClick={handleAICoach} style={{
-          width: '100%', textAlign: 'left',
-          background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
-          border: 'none', borderRadius: 18, padding: '20px 24px',
-          cursor: 'pointer', marginBottom: 16, position: 'relative', overflow: 'hidden',
-          opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(10px)',
-          transition: 'all 0.45s ease 0.28s',
-        }}>
-          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.1 }} xmlns="http://www.w3.org/2000/svg">
-            <defs><pattern id="aigrid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="white" strokeWidth="0.5"/></pattern></defs>
-            <rect width="100%" height="100%" fill="url(#aigrid)" />
-          </svg>
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>POWERED BY AI</div>
-              <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.04em', marginBottom: 4 }}>AI STUDY COACH</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'system-ui' }}>Ask questions · Get explanations · Track weak areas</div>
-            </div>
-            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', flexShrink: 0, marginLeft: 12 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" /></svg>
-            </div>
-          </div>
-        </button>
-
-        {/* AI welcome message */}
-        {(aiLoading || aiMessage) && (
-          <div style={{
-            background: '#ffffff', border: '1.5px solid rgba(15,23,42,0.07)',
-            borderRadius: 18, padding: '18px 20px', marginBottom: 16,
-            position: 'relative', overflow: 'hidden',
-            opacity: visible ? 1 : 0, transition: 'opacity 0.4s ease 0.3s',
-          }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: 'linear-gradient(180deg, #1d4ed8, #7c3aed)' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: aiLoading ? 0 : 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#ffffff"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" /></svg>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', fontFamily: 'system-ui', letterSpacing: '0.02em' }}>EXAMFORGE AI</div>
-                <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'system-ui' }}>Your study coach</div>
-              </div>
-            </div>
-            {aiLoading
-              ? <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>{[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#cbd5e1', animation: `pulse 1.2s ease ${i * 0.2}s infinite` }} />)}</div>
-              : <p style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.75, margin: 0, fontFamily: 'Georgia, serif' }}>{aiMessage}</p>
-            }
-          </div>
-        )}
-
-        {/* Empty state */}
-        {isNew && (
-          <div style={{ border: '1.5px dashed rgba(15,23,42,0.15)', borderRadius: 18, padding: '28px 20px', textAlign: 'center', marginBottom: 16, opacity: visible ? 1 : 0, transition: 'opacity 0.4s ease 0.3s' }}>
-            <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 20, color: '#0f172a', letterSpacing: '0.05em', marginBottom: 8 }}>NO SESSION YET</div>
-            <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6, margin: '0 0 16px', fontFamily: 'system-ui' }}>Hit Start Practice above. Your stats and AI coaching will appear here after your first session.</p>
-          </div>
-        )}
-
-        {/* Subject performance */}
-        {!loading && subjects.length > 0 && (
-          <div style={{ background: '#ffffff', border: '1.5px solid rgba(15,23,42,0.07)', borderRadius: 18, padding: '20px', marginBottom: 16, opacity: visible ? 1 : 0, transform: visible ? 'none' : 'translateY(10px)', transition: 'all 0.45s ease 0.35s' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 18, color: '#0f172a', letterSpacing: '0.05em' }}>PERFORMANCE</div>
-              <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'system-ui', fontWeight: 600, letterSpacing: '0.08em' }}>BY SUBJECT</div>
-            </div>
-            {subjects.map(([subject, acc], i) => {
-              const color = acc >= 70 ? '#059669' : acc >= 50 ? '#d97706' : '#dc2626'
-              return (
-                <div key={subject} style={{ marginBottom: i < subjects.length - 1 ? 14 : 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <span style={{ fontSize: 12, color: '#475569', fontFamily: 'system-ui', fontWeight: 500 }}>{subject}</span>
-                    <span style={{ fontSize: 11, fontWeight: 800, color, fontFamily: "'Bebas Neue', Georgia, serif", letterSpacing: '0.03em' }}>{acc}%</span>
-                  </div>
-                  <div style={{ position: 'relative', height: 6, background: '#f1f5f9', borderRadius: 0 }}>
-                    {[25, 50, 75].map(mark => <div key={mark} style={{ position: 'absolute', left: `${mark}%`, top: 0, bottom: 0, width: 1, background: '#e2e8f0' }} />)}
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${acc}%`, background: color, transition: 'width 1.2s cubic-bezier(0.4,0,0.2,1)' }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Weak topics */}
-        {!loading && weakTopics.length > 0 && (
-          <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 18, padding: '18px 20px', marginBottom: 16, opacity: visible ? 1 : 0, transition: 'opacity 0.45s ease 0.4s' }}>
-            <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 16, letterSpacing: '0.08em', color: '#92400e', marginBottom: 12 }}>⚠ NEEDS ATTENTION</div>
-            {weakTopics.map((t, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: i > 0 ? '1px solid #fde68a' : 'none' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui' }}>{t.topic}</div>
-                  <div style={{ fontSize: 10, color: '#92400e', fontFamily: 'system-ui', letterSpacing: '0.04em', textTransform: 'uppercase', marginTop: 1 }}>{t.subject}</div>
-                </div>
-                <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#d97706', letterSpacing: '-0.01em' }}>{t.accuracy}%</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Recent sessions */}
-        {!loading && sessions.length > 0 && (
-          <div style={{ background: '#ffffff', border: '1.5px solid rgba(15,23,42,0.07)', borderRadius: 18, padding: '20px', marginBottom: 16, opacity: visible ? 1 : 0, transition: 'opacity 0.45s ease 0.45s' }}>
-            <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 18, color: '#0f172a', letterSpacing: '0.05em', marginBottom: 14 }}>RECENT SESSIONS</div>
-            {sessions.map((s, i) => {
-              const pct   = s.percentage ?? (s.total_questions > 0 ? Math.round((s.score / s.total_questions) * 100) : 0)
-              const color = pct >= 70 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626'
-              return (
-                <div key={s.session_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: i > 0 ? '1px solid #f8fafc' : 'none' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', fontFamily: 'system-ui' }}>Practice Session</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'system-ui', marginTop: 2, letterSpacing: '0.03em' }}>
-                      {new Date(s.date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })} · {s.total_questions} questions
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 24, color, letterSpacing: '-0.01em', lineHeight: 1 }}>{pct}%</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'system-ui' }}>{s.score}/{s.total_questions}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* News */}
-        {news.length > 0 && (
-          <div style={{ opacity: visible ? 1 : 0, transition: 'opacity 0.45s ease 0.5s', marginBottom: 16 }}>
-            <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 18, color: '#0f172a', letterSpacing: '0.05em', marginBottom: 12 }}>NEWS & UPDATES</div>
-            <div style={{ display: 'flex', gap: 10, overflowX: 'auto', marginLeft: -16, marginRight: -16, paddingLeft: 16, paddingRight: 16 }}>
-              {news.slice(0, 4).map(item => (
-                <div key={item.id} style={{ flexShrink: 0, width: 220, background: '#ffffff', border: '1.5px solid rgba(15,23,42,0.07)', borderRadius: 14, padding: '16px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', fontFamily: 'Georgia, serif', lineHeight: 1.4, marginBottom: 8 }}>{item.headline}</div>
-                  <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'system-ui', lineHeight: 1.5 }}>{item.body.slice(0, 70)}…</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Subscribe banner */}
-        {!loading && !isSubbed && (
-          <button className="practice-btn" onClick={() => setSheet('subscribe')} style={{
-            width: '100%', textAlign: 'left',
-            background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%)',
-            border: 'none', borderRadius: 18, padding: '22px 24px',
-            cursor: 'pointer', marginBottom: 16, position: 'relative', overflow: 'hidden',
-            opacity: visible ? 1 : 0, transition: 'opacity 0.45s ease 0.55s',
-          }}>
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.1 }} xmlns="http://www.w3.org/2000/svg">
-              <defs><pattern id="subgrid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="white" strokeWidth="0.5"/></pattern></defs>
-              <rect width="100%" height="100%" fill="url(#subgrid)" />
-            </svg>
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>UPGRADE</div>
-              <div style={{ fontFamily: "'Bebas Neue', Georgia, serif", fontSize: 22, color: '#ffffff', letterSpacing: '0.04em', marginBottom: 6 }}>UNLOCK FULL ACCESS</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'system-ui', marginBottom: 14, lineHeight: 1.5 }}>AI explanations · Unlimited questions · Full analytics</div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#ffffff', color: '#1d4ed8', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 800, fontFamily: "'Bebas Neue', Georgia, serif", letterSpacing: '0.08em' }}>
-                VIEW PLANS →
-              </div>
-            </div>
-          </button>
-        )}
-      </div>
-
-      {/* ── BOTTOM NAV ── */}
-      <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(15,23,42,0.07)',
-        display: 'flex', zIndex: 100,
-        paddingBottom: 'env(safe-area-inset-bottom)',
+    <Suspense fallback={
+      <div style={{
+        minHeight: '100vh', background: '#faf9f7',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'center', flexDirection: 'column', gap: 16,
       }}>
-        {NAV.map(({ id, label, icon }) => {
-          const isActive = activeTab === id
-          return (
-            <button key={id} onClick={() => {
-              setActiveTab(id)
-              if (id === 'practice') setSheet('practice')
-              else if (id === 'account') setSheet('account')
-              else if (id === 'ai') handleAICoach()
-              else if (id === 'results') router.push('/practice/results')
-            }} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px 4px', background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}>
-              {isActive && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 2, background: '#0f172a' }} />}
-              {icon(isActive)}
-              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: isActive ? '#0f172a' : '#94a3b8', fontFamily: 'system-ui' }}>{label.toUpperCase()}</span>
-            </button>
-          )
-        })}
-      </nav>
-
-      {/* ── SHEETS ── */}
-      <BottomSheet open={sheet === 'practice'} onClose={() => setSheet('none')} title="CHOOSE MODE">
-        <PracticeSheet onSelect={handlePracticeSelect} />
-      </BottomSheet>
-
-      <BottomSheet open={sheet === 'subscribe'} onClose={() => setSheet('none')} title="SUBSCRIBE">
-        <SubscribeSheet userId={userId!} />
-      </BottomSheet>
-
-      <BottomSheet open={sheet === 'account'} onClose={() => setSheet('none')} title="ACCOUNT">
-        <AccountSheet data={data} onSignOut={handleSignOut} onSubscribe={() => setSheet('subscribe')} onAICoach={handleAICoach} />
-      </BottomSheet>
-    </div>
-  )
-}
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={null}>
-      <DashboardContent />
+        <div style={{
+          width: 36, height: 36, borderRadius: '50%',
+          border: '3px solid #e2e8f0', borderTopColor: '#1d4ed8',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <p style={{ fontFamily: 'system-ui', fontSize: 13, color: '#94a3b8', margin: 0 }}>
+          Loading…
+        </p>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    }>
+      <ResultsInner />
     </Suspense>
   )
-        }
+}
+     
