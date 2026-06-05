@@ -78,7 +78,12 @@ const Label = ({ children, required }: { children: React.ReactNode; required?: b
 );
 
 // ── Custom Select ──────────────────────────────────────────────────────────────
-const Select = ({ value, onChange, options, placeholder }) => (
+const Select = ({ value, onChange, options, placeholder }: {
+  value: string
+  onChange: (val: string) => void
+  options: { label: string; value: string }[]
+  placeholder?: string
+}) => {
   <div style={{ position: "relative" }}>
     <select
       value={value}
