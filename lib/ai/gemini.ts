@@ -1,31 +1,39 @@
 // lib/ai/gemini.ts
 // Server-side only — NEVER import in client components
 
-const MODEL_CHAIN = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-flash-latest',
-  'gemini-2.0-flash-lite',
+interface ModelConfig {
+  model: string
+  supportsTemperature: boolean
+}
+
+const MODEL_CHAIN: ModelConfig[] = [
+  { model: 'gemini-3.5-flash',      supportsTemperature: false },
+  { model: 'gemini-3-flash-preview', supportsTemperature: false },
+  { model: 'gemini-2.5-flash',      supportsTemperature: true  },
+  { model: 'gemini-flash-latest',   supportsTemperature: true  },
 ]
 
 const RETRYABLE_STATUSES = new Set([429, 500, 503, 529])
 
-// ─── Fallback message ────────────────────────────────────────────────────────
-// Single generic fallback returned to any caller when all models fail.
-// Never exposes raw API errors — clean and neutral for any context.
-
-const FALLBACK_MESSAGE = "AI is temporarily unavailable. Please try again shortly." 
-
-// ─── Single model attempt ─────────────────────────────────────────────────────
+const FALLBACK_MESSAGE = "AI is temporarily unavailable. Please try again shortly."
 
 async function tryModel(
-  model: string,
+  config: ModelConfig,
   systemPrompt: string,
   userPrompt: string,
   temperature: number,
   maxTokens: number,
   apiKey: string
 ): Promise<string> {
+  const { model, supportsTemperature } = config
+
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens: maxTokens,
+  }
+  if (supportsTemperature) {
+    generationConfig.temperature = temperature
+  }
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
@@ -37,7 +45,7 @@ async function tryModel(
           { role: 'model', parts: [{ text: 'Understood. I am ready to coach this student.' }] },
           { role: 'user',  parts: [{ text: userPrompt }] },
         ],
-        generationConfig: { temperature, maxOutputTokens: maxTokens },
+        generationConfig,
         safetySettings: [
           { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_ONLY_HIGH' },
           { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_ONLY_HIGH' },
@@ -75,9 +83,6 @@ async function tryModel(
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-// ─── Main export ──────────────────────────────────────────────────────────────
-// graceful: if true, returns a clean fallback string instead of throwing (default true)
-
 export async function callGemini(
   systemPrompt: string,
   userPrompt: string,
@@ -94,11 +99,11 @@ export async function callGemini(
   const errors: string[] = []
 
   for (let i = 0; i < MODEL_CHAIN.length; i++) {
-    const model = MODEL_CHAIN[i]
+    const config = MODEL_CHAIN[i]
 
     try {
-      const result = await tryModel(model, systemPrompt, userPrompt, temperature, maxTokens, apiKey)
-      if (i > 0) console.warn(`[gemini] Primary unavailable — used fallback: ${model}`)
+      const result = await tryModel(config, systemPrompt, userPrompt, temperature, maxTokens, apiKey)
+      if (i > 0) console.warn(`[gemini] Primary unavailable — used fallback: ${config.model}`)
       return result
 
     } catch (err: any) {
@@ -107,13 +112,13 @@ export async function callGemini(
       errors.push(err.message)
 
       if (truncated) {
-        console.warn(`[gemini] ${model} truncated — trying next model`)
+        console.warn(`[gemini] ${config.model} truncated — trying next model`)
         await sleep((i + 1) * 300)
         continue
       }
 
       if (status && RETRYABLE_STATUSES.has(status)) {
-        console.warn(`[gemini] ${model} returned ${status} — trying next model in ${(i + 1) * 300}ms`)
+        console.warn(`[gemini] ${config.model} returned ${status} — trying next model in ${(i + 1) * 300}ms`)
         await sleep((i + 1) * 300)
         continue
       }
@@ -123,10 +128,7 @@ export async function callGemini(
     }
   }
 
-  // All models failed — log it server-side, return clean message to client
   console.error(`[gemini] All models failed:\n${errors.join('\n')}`)
-
   if (graceful) return FALLBACK_MESSAGE
-
   throw new Error(`All Gemini models unavailable. Errors:\n${errors.join('\n')}`)
-}
+    }
