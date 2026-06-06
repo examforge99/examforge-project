@@ -140,11 +140,10 @@ const weakTopics = metrics
   .slice(0, 5)
   .map(m => ({ subject: m.subject, topic: m.topic, accuracy: Math.round(m.accuracy_percentage) }))
 
-const context: StudentContext = {
+    const context: StudentContext = {
   user: {
     full_name: user.full_name,
     exam_type: user.exam_type,
-    department: user.department ?? null,
     target_score: user.target_score ?? null,
     subscription_status: user.subscription_status,
     weak_subjects: user.weak_subjects ?? [],
