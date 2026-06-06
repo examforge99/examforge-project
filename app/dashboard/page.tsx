@@ -430,10 +430,11 @@ function AccountSheet({ data, onSignOut, onSubscribe, onAICoach }: {
   ]
 
   const router = useRouter()
+  
 
   const handleLink = (action: string) => {
     if (action === 'subscribe') { onSubscribe(); return }
-    if (action === 'ai') { router.push('/dashboard/ai-coach'); return }
+     if (action === 'ai') { router.push('/dashboard/ai-coach'); return 
     if (action === 'history')   { router.push('/history');  return }
     if (action === 'news')      { router.push('/news');     return }
     if (action === 'settings')  { router.push('/account');  return }
