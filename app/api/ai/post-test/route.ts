@@ -83,13 +83,85 @@ export async function POST(request: Request) {
       ? Math.round((score / total_questions) * 100)
       : 0
 
-    // ── Fetch student context ─────────────────────────────────────────────────
+    
 
-    const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'
-    const contextRes = await fetch(`${baseUrl}/api/student/context?user_id=${user_id}`)
-    const contextData = await contextRes.json()
-    const context: StudentContext = contextData as StudentContext
+    // ── Fetch student context directly from Supabase ──────────────────────────
 
+const [userRes, streakRes, metricsRes, aiSummaryRes] = await Promise.all([
+  supabaseAdmin
+    .from('users')
+    .select('full_name, exam_type, department, target_score, subscription_status, weak_subjects, created_at')
+    .eq('clerk_user_id', user_id)
+    .single(),
+
+  supabaseAdmin
+    .from('streaks')
+    .select('current_streak_days, longest_streak, last_study_date, streak_active')
+    .eq('clerk_user_id', user_id)
+    .maybeSingle(),
+
+  supabaseAdmin
+    .from('metrics')
+    .select('subject, topic, accuracy_percentage, total_attempted, total_correct')
+    .eq('clerk_user_id', user_id)
+    .order('total_attempted', { ascending: false }),
+
+  supabaseAdmin
+    .from('ai_student_summary')
+    .select('summary_text')
+    .eq('clerk_user_id', user_id)
+    .maybeSingle(),
+])
+
+if (userRes.error || !userRes.data) {
+  return Response.json({ error: 'User not found' }, { status: 404 })
+}
+
+const user = userRes.data
+const streak = streakRes.data
+const metrics = metricsRes.data ?? []
+const aiSummary = aiSummaryRes.data
+
+// Build accuracy_by_subject
+const subjectTotals: Record<string, { correct: number; attempted: number }> = {}
+for (const m of metrics) {
+  if (!subjectTotals[m.subject]) subjectTotals[m.subject] = { correct: 0, attempted: 0 }
+  subjectTotals[m.subject].correct += m.total_correct
+  subjectTotals[m.subject].attempted += m.total_attempted
+}
+const accuracyBySubject: Record<string, number> = {}
+for (const [subject, { correct, attempted }] of Object.entries(subjectTotals)) {
+  accuracyBySubject[subject] = attempted > 0 ? Math.round((correct / attempted) * 100) : 0
+}
+
+const weakTopics = metrics
+  .filter(m => m.total_attempted >= 5 && m.accuracy_percentage < 50)
+  .sort((a, b) => a.accuracy_percentage - b.accuracy_percentage)
+  .slice(0, 5)
+  .map(m => ({ subject: m.subject, topic: m.topic, accuracy: Math.round(m.accuracy_percentage) }))
+
+const context: StudentContext = {
+  user: {
+    full_name: user.full_name,
+    exam_type: user.exam_type,
+    department: user.department ?? null,
+    target_score: user.target_score ?? null,
+    subscription_status: user.subscription_status,
+    weak_subjects: user.weak_subjects ?? [],
+    days_on_platform: user.created_at
+      ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86_400_000)
+      : 0,
+  },
+  streak: {
+    current_streak_days: streak?.current_streak_days ?? 0,
+    longest_streak: streak?.longest_streak ?? 0,
+    streak_active: streak?.streak_active ?? false,
+    last_study_date: streak?.last_study_date ?? null,
+  },
+  accuracy_by_subject: accuracyBySubject,
+  weak_topics: weakTopics,
+  ai_summary: aiSummary?.summary_text ?? null,
+    }
     // ── Find weakest subject and topic from this session ──────────────────────
 
     // Sort by_subject by percentage ascending — weakest first
