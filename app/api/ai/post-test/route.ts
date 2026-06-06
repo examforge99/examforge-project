@@ -142,24 +142,43 @@ const weakTopics = metrics
 
     const context: StudentContext = {
   user: {
-    full_name: user.full_name,
-    exam_type: user.exam_type,
-    target_score: user.target_score ?? null,
+    id: user_id,
+    exam_date: null,
+    days_until_exam: null,
     subscription_status: user.subscription_status,
-    weak_subjects: user.weak_subjects ?? [],
     days_on_platform: user.created_at
       ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86_400_000)
       : 0,
   },
   streak: {
     current_streak_days: streak?.current_streak_days ?? 0,
-    longest_streak: streak?.longest_streak ?? 0,
     streak_active: streak?.streak_active ?? false,
     last_study_date: streak?.last_study_date ?? null,
   },
   accuracy_by_subject: accuracyBySubject,
+  accuracy_by_topic: metrics.map(m => ({
+    subject: m.subject,
+    topic: m.topic,
+    accuracy: Math.round(m.accuracy_percentage),
+    total_attempted: m.total_attempted,
+  })),
   weak_topics: weakTopics,
-  ai_summary: aiSummary?.summary_text ?? null,
+  neglected_subjects: [],
+  recent_sessions: [],
+  milestones: {
+    total_questions_answered: 0,
+    total_correct: 0,
+    overall_accuracy: 0,
+    reached_100_questions: false,
+    reached_500_questions: false,
+    first_70_percent_achieved: false,
+    longest_streak: streak?.longest_streak ?? 0,
+  },
+  pending_session: null,
+  ai_memory: {
+    summary: aiSummary?.summary_text ?? '',
+    recent_interactions: [],
+  },
     }
     // ── Find weakest subject and topic from this session ──────────────────────
 
